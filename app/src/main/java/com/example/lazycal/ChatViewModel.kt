@@ -59,6 +59,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         initializeEngine()
     }
 
+    fun deleteModel() {
+        viewModelScope.launch(Dispatchers.IO) {
+            conversation?.close()
+            engine?.close()
+            conversation = null
+            engine = null
+            modelManager.deleteModel()
+            withContext(Dispatchers.Main) {
+                _messages.value = emptyList()
+                _uiState.value = ChatState.ModelMissing
+            }
+        }
+    }
+
     private fun initializeEngine() {
         _uiState.value = ChatState.Initializing
         viewModelScope.launch(Dispatchers.IO) {
