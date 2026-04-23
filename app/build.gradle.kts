@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-kapt")
 }
 
 android {
@@ -27,7 +28,7 @@ android {
             )
         }
     }
-    kotlin{
+    kotlin {
         jvmToolchain(21)
     }
     compileOptions {
@@ -52,6 +53,11 @@ dependencies {
     
     // LiteRT-LM
     implementation(libs.litertlm)
+
+    // Room
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    kapt(libs.room.compiler)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

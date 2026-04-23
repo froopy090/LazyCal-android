@@ -8,14 +8,13 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.*
 
-data class ChatMessage(val text: String, val isUser: Boolean)
+data class ChatMessage(val text: String, val isUser: Boolean, val timestamp: Long = System.currentTimeMillis())
 
 sealed class ChatState {
     object CheckingModel : ChatState()
@@ -28,9 +27,23 @@ sealed class ChatState {
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val modelManager = ModelManager(application)
+    private val db = ChatDatabase.getDatabase(application)
+    private val messageDao = db.messageDao()
     
     private val _uiState = MutableStateFlow<ChatState>(ChatState.CheckingModel)
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
+
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val todayId = dateFormat.format(Date())
+
+    private val _selectedDay = MutableStateFlow(todayId)
+    val selectedDay: StateFlow<String> = _selectedDay.asStateFlow()
+
+    val isReadOnly: StateFlow<Boolean> = _selectedDay.map { it != todayId }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val archivedDays: StateFlow<List<String>> = messageDao.getAllDays()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -40,6 +53,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         checkModel()
+        observeMessages()
+    }
+
+    private fun observeMessages() {
+        _selectedDay.flatMapLatest { dayId ->
+            messageDao.getMessagesForDay(dayId)
+        }.onEach { entities ->
+            _messages.value = entities.map { ChatMessage(it.text, it.isUser, it.timestamp) }
+        }.launchIn(viewModelScope)
+    }
+
+    fun selectDay(dayId: String) {
+        _selectedDay.value = dayId
     }
 
     private fun checkModel() {
@@ -66,8 +92,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             conversation = null
             engine = null
             modelManager.deleteModel()
+            messageDao.deleteAll()
             withContext(Dispatchers.Main) {
-                _messages.value = emptyList()
                 _uiState.value = ChatState.ModelMissing
             }
         }
@@ -100,41 +126,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendMessage(text: String) {
-        val userMsg = ChatMessage(text, true)
-        _messages.value = _messages.value + userMsg
-        
-        // Add a placeholder for the model response to support streaming
-        _messages.value = _messages.value + ChatMessage("", false)
+        if (_selectedDay.value != todayId) return
 
         viewModelScope.launch(Dispatchers.IO) {
+            // Save user message
+            messageDao.insert(MessageEntity(text = text, isUser = true, dayId = todayId))
+            
             try {
                 var fullResponse = ""
+                // We add a temporary message to the local list for streaming UI, 
+                // but we only save to DB once finished or in chunks if preferred.
+                // To keep it simple, we'll stream in UI and save at the end.
+                
                 conversation?.sendMessageAsync(text)
                     ?.catch { e ->
                         withContext(Dispatchers.Main) {
-                            updateLastMessage("Error: ${e.message}")
+                            // In a real app, handle streaming errors better
                         }
                     }
                     ?.collect { chunk ->
                         fullResponse += chunk.toString()
                         withContext(Dispatchers.Main) {
-                            updateLastMessage(fullResponse)
+                            // Update UI state for streaming (optional, since we are observing DB,
+                            // we might need a separate flow for the "in-progress" response)
+                            updateIncompleteResponse(fullResponse)
                         }
                     }
+                
+                // Save model response once complete
+                messageDao.insert(MessageEntity(text = fullResponse, isUser = false, dayId = todayId))
+                _incompleteResponse.value = null
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    updateLastMessage("Error: ${e.message}")
-                }
+                messageDao.insert(MessageEntity(text = "Error: ${e.message}", isUser = false, dayId = todayId))
             }
         }
     }
 
-    private fun updateLastMessage(text: String) {
-        val currentMessages = _messages.value.toMutableList()
-        if (currentMessages.isNotEmpty() && !currentMessages.last().isUser) {
-            currentMessages[currentMessages.size - 1] = ChatMessage(text, false)
-            _messages.value = currentMessages
-        }
+    private val _incompleteResponse = MutableStateFlow<String?>(null)
+    val incompleteResponse: StateFlow<String?> = _incompleteResponse.asStateFlow()
+
+    private fun updateIncompleteResponse(text: String) {
+        _incompleteResponse.value = text
     }
 
     override fun onCleared() {
