@@ -1,11 +1,9 @@
 package com.example.lazycal
 
 import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
+import androidx.core.net.toUri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
@@ -15,7 +13,10 @@ class ModelManager(private val context: Context) {
     private val modelUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
     
     val modelFile: File by lazy {
-        File(context.filesDir, modelFileName)
+        // DownloadManager cannot write directly to the app's internal filesDir (/data/data/...)
+        // because it is a system service running in a different process.
+        // We use getExternalFilesDir(null) which is app-specific but accessible to the DownloadManager.
+        File(context.getExternalFilesDir(null), modelFileName)
     }
 
     private val _downloadProgress = MutableStateFlow<Float?>(null)
@@ -26,20 +27,25 @@ class ModelManager(private val context: Context) {
     fun downloadModel() {
         if (isModelDownloaded()) return
 
-        val request = DownloadManager.Request(Uri.parse(modelUrl))
-            .setTitle("Downloading Gemma Model")
-            .setDescription("Downloading LiteRT-LM model for local chat")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationUri(Uri.fromFile(modelFile))
+        try {
+            // Ensure the destination directory exists
+            modelFile.parentFile?.mkdirs()
 
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val downloadId = downloadManager.enqueue(request)
+            val request = DownloadManager.Request(modelUrl.toUri())
+                .setTitle("Downloading Gemma Model")
+                .setDescription("Downloading LiteRT-LM model for local chat")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                // Use setDestinationInExternalFilesDir instead of setDestinationUri(filesDir)
+                // This allows the system's DownloadManager process to write the file.
+                .setDestinationInExternalFilesDir(context, null, modelFileName)
 
-        _downloadProgress.value = 0f
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            downloadManager.enqueue(request)
 
-        // Simple progress tracking (in a real app, you'd use a more robust way to poll DownloadManager)
-        // For brevity, we'll just set it to indeterminate/starting state
+            _downloadProgress.value = 0f
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // In a real app, you'd want to propagate this error to the UI
+        }
     }
-    
-    // In a real implementation, you'd register a receiver to update progress and completion
 }
