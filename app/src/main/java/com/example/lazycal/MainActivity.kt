@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lazycal.ui.theme.LazyCalTheme
@@ -32,6 +33,16 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val archivedDays by viewModel.archivedDays.collectAsState()
                 val selectedDay by viewModel.selectedDay.collectAsState()
+                val snackbarHostState = remember { SnackbarHostState() }
+                val inputErrorMessage by viewModel.inputErrorMessage.collectAsState()
+
+                // Handle transient input errors via Snackbar
+                LaunchedEffect(inputErrorMessage) {
+                    inputErrorMessage?.let {
+                        snackbarHostState.showSnackbar(it)
+                        viewModel.clearInputError()
+                    }
+                }
 
                 ModalNavigationDrawer(
                     drawerState = drawerState,
@@ -39,7 +50,7 @@ class MainActivity : ComponentActivity() {
                         ModalDrawerSheet {
                             Spacer(Modifier.height(12.dp))
                             Text("History", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                            Divider()
+                            HorizontalDivider()
                             LazyColumn {
                                 items(archivedDays) { day ->
                                     NavigationDrawerItem(
@@ -58,9 +69,10 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
+                        snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
                             TopAppBar(
-                                title = { Text("Lazy Cal Chat") },
+                                title = { Text("Lazy Cal Tracker") },
                                 navigationIcon = {
                                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                         Icon(
@@ -93,18 +105,26 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         CircularProgressIndicator()
                                         Spacer(modifier = Modifier.height(8.dp))
-                                        Text("Initializing Engine...")
+                                        Text("Initializing Parser...")
                                     }
                                 }
                                 ChatState.Ready -> {
                                     ChatScreen(viewModel)
                                 }
                                 is ChatState.Error -> {
-                                    Text(
-                                        text = (uiState as ChatState.Error).message,
-                                        color = Color.Red,
-                                        modifier = Modifier.align(Alignment.Center)
-                                    )
+                                    Column(
+                                        modifier = Modifier.align(Alignment.Center),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = (uiState as ChatState.Error).message,
+                                            color = Color.Red,
+                                            modifier = Modifier.padding(16.dp)
+                                        )
+                                        Button(onClick = { viewModel.onDownloadComplete() }) {
+                                            Text("Retry Initialization")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -132,7 +152,7 @@ fun SettingsMenu(onDeleteModel: () -> Unit) {
             onDismissRequest = { expanded = false }
         ) {
             DropdownMenuItem(
-                text = { Text("Delete Downloaded Model") },
+                text = { Text("Clear All Data & Model") },
                 onClick = {
                     expanded = false
                     onDeleteModel()
@@ -145,16 +165,16 @@ fun SettingsMenu(onDeleteModel: () -> Unit) {
 @Composable
 fun WelcomeScreen(onDownloadClick: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Welcome to Local AI Chat", style = MaterialTheme.typography.headlineMedium)
+        Text("Lazy Calorie Tracker", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
-        Text("The Gemma 4 model needs to be downloaded (approx. 1.5GB).")
-        Spacer(modifier = Modifier.height(24.dp))
+        Text("AI-powered local calorie tracking. Describe what you ate, and let Gemma estimate the rest.", style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onDownloadClick) {
-            Text("Download Model")
+            Text("Download Parser (1.5GB)")
         }
     }
 }
@@ -168,35 +188,46 @@ fun DownloadingScreen(onCheckClick: () -> Unit) {
     ) {
         CircularProgressIndicator()
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Downloading model via Download Manager...")
-        Text("Please check your notification bar for progress.")
+        Text("Downloading model...")
         Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onCheckClick) {
-            Text("I'm done downloading / Refresh")
+            Text("Refresh / Check Status")
         }
     }
 }
 
 @Composable
 fun ChatScreen(viewModel: ChatViewModel) {
-    val messages by viewModel.messages.collectAsState()
-    val incompleteResponse by viewModel.incompleteResponse.collectAsState()
+    val entries by viewModel.foodEntries.collectAsState()
+    val dailyTotal by viewModel.dailyTotal.collectAsState()
     val isReadOnly by viewModel.isReadOnly.collectAsState()
+    val isProcessing by viewModel.isProcessing.collectAsState()
     var inputText by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        // Daily Total Card
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Daily Total", style = MaterialTheme.typography.labelLarge)
+                Text("$dailyTotal kcal", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            reverseLayout = false
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages) { message ->
-                ChatBubble(message)
+            items(entries) { entry ->
+                FoodEntryItem(entry)
             }
-            incompleteResponse?.let {
-                item {
-                    ChatBubble(ChatMessage(it, false))
-                }
-            }
+        }
+
+        if (isProcessing) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
         }
 
         if (!isReadOnly) {
@@ -209,15 +240,19 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type a message...") }
+                    placeholder = { Text("e.g. 2 slices of pepperoni pizza") },
+                    enabled = !isProcessing,
+                    singleLine = true
                 )
+                Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
                     onClick = {
                         if (inputText.isNotBlank()) {
                             viewModel.sendMessage(inputText)
                             inputText = ""
                         }
-                    }
+                    },
+                    enabled = !isProcessing
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_send),
@@ -232,10 +267,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    text = "This is a read-only archived chat.",
+                    text = "Archived log.",
                     modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
@@ -243,19 +277,25 @@ fun ChatScreen(viewModel: ChatViewModel) {
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage) {
-    val alignment = if (message.isUser) Alignment.End else Alignment.Start
-    val color = if (message.isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
-    
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = alignment) {
-        Surface(
-            color = color,
-            shape = RoundedCornerShape(12.dp)
+fun FoodEntryItem(entry: FoodEntry) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = entry.foodName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(text = entry.amount, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Input: \"${entry.originalInput}\"", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
             Text(
-                text = message.text,
-                modifier = Modifier.padding(8.dp),
-                style = MaterialTheme.typography.bodyMedium
+                text = "${entry.calories} kcal",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
         }
     }

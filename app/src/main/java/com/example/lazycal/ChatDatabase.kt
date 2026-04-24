@@ -4,33 +4,41 @@ import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "messages")
-data class MessageEntity(
+@Entity(tableName = "food_entries")
+data class FoodEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val text: String,
-    val isUser: Boolean,
+    val foodName: String,
+    val amount: String,
+    val calories: Int,
     val timestamp: Long = System.currentTimeMillis(),
-    val dayId: String // Format: YYYY-MM-DD
+    val dayId: String, // Format: YYYY-MM-DD
+    val originalInput: String
 )
 
 @Dao
-interface MessageDao {
-    @Query("SELECT * FROM messages WHERE dayId = :dayId ORDER BY timestamp ASC")
-    fun getMessagesForDay(dayId: String): Flow<List<MessageEntity>>
+interface FoodDao {
+    @Query("SELECT * FROM food_entries WHERE dayId = :dayId ORDER BY timestamp DESC")
+    fun getEntriesForDay(dayId: String): Flow<List<FoodEntry>>
 
-    @Query("SELECT DISTINCT dayId FROM messages ORDER BY dayId DESC")
+    @Query("SELECT SUM(calories) FROM food_entries WHERE dayId = :dayId")
+    fun getDailyTotal(dayId: String): Flow<Int?>
+
+    @Query("SELECT DISTINCT dayId FROM food_entries ORDER BY dayId DESC")
     fun getAllDays(): Flow<List<String>>
 
     @Insert
-    suspend fun insert(message: MessageEntity)
+    suspend fun insert(entry: FoodEntry)
 
-    @Query("DELETE FROM messages")
+    @Delete
+    suspend fun delete(entry: FoodEntry)
+
+    @Query("DELETE FROM food_entries")
     suspend fun deleteAll()
 }
 
-@Database(entities = [MessageEntity::class], version = 1)
+@Database(entities = [FoodEntry::class], version = 2, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
-    abstract fun messageDao(): MessageDao
+    abstract fun foodDao(): FoodDao
 
     companion object {
         @Volatile
@@ -41,8 +49,10 @@ abstract class ChatDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     ChatDatabase::class.java,
-                    "chat_database"
-                ).build()
+                    "lazycal_database"
+                )
+                .fallbackToDestructiveMigration() // Reset DB schema for refactor
+                .build()
                 INSTANCE = instance
                 instance
             }

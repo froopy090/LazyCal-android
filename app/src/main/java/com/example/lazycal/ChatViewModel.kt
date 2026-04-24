@@ -1,20 +1,24 @@
 package com.example.lazycal
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Contents
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
-
-data class ChatMessage(val text: String, val isUser: Boolean, val timestamp: Long = System.currentTimeMillis())
 
 sealed class ChatState {
     object CheckingModel : ChatState()
@@ -28,7 +32,7 @@ sealed class ChatState {
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val modelManager = ModelManager(application)
     private val db = ChatDatabase.getDatabase(application)
-    private val messageDao = db.messageDao()
+    private val foodDao = db.foodDao()
     
     private val _uiState = MutableStateFlow<ChatState>(ChatState.CheckingModel)
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
@@ -42,30 +46,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isReadOnly: StateFlow<Boolean> = _selectedDay.map { it != todayId }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val archivedDays: StateFlow<List<String>> = messageDao.getAllDays()
+    val archivedDays: StateFlow<List<String>> = foodDao.getAllDays()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
-    val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val foodEntries: StateFlow<List<FoodEntry>> = _selectedDay.flatMapLatest { dayId ->
+        foodDao.getEntriesForDay(dayId)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val dailyTotal: StateFlow<Int> = _selectedDay.flatMapLatest { dayId ->
+        foodDao.getDailyTotal(dayId)
+    }.map { it ?: 0 }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    private val _inputErrorMessage = MutableStateFlow<String?>(null)
+    val inputErrorMessage: StateFlow<String?> = _inputErrorMessage.asStateFlow()
 
     private var engine: Engine? = null
     private var conversation: Conversation? = null
 
+    private val systemInstruction = """
+        You are a calorie estimation assistant. Convert the user's food description into a JSON object with the following fields: 'food_item' (String), 'amount' (String), and 'calories' (Integer). If the user describes multiple items, return a JSON array of such objects. If the input is not food or is nonsensical, return '{"error": "invalid"}'. Return ONLY JSON.
+    """.trimIndent()
+
     init {
         checkModel()
-        observeMessages()
-    }
-
-    private fun observeMessages() {
-        _selectedDay.flatMapLatest { dayId ->
-            messageDao.getMessagesForDay(dayId)
-        }.onEach { entities ->
-            _messages.value = entities.map { ChatMessage(it.text, it.isUser, it.timestamp) }
-        }.launchIn(viewModelScope)
     }
 
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
+        _inputErrorMessage.value = null
     }
 
     private fun checkModel() {
@@ -92,9 +102,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             conversation = null
             engine = null
             modelManager.deleteModel()
-            messageDao.deleteAll()
+            foodDao.deleteAll()
             withContext(Dispatchers.Main) {
                 _uiState.value = ChatState.ModelMissing
+                _inputErrorMessage.value = null
             }
         }
     }
@@ -112,12 +123,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 engineInstance.initialize()
                 engine = engineInstance
                 
-                conversation = engineInstance.createConversation()
+                val conversationConfig = ConversationConfig(
+                    systemInstruction = Contents.of(systemInstruction)
+                )
+                conversation = engineInstance.createConversation(conversationConfig)
                 
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Ready
                 }
             } catch (e: Exception) {
+                Log.e("ChatViewModel", "Engine init failed", e)
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
                 }
@@ -125,48 +140,121 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _isProcessing = MutableStateFlow(false)
+    val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
+
     fun sendMessage(text: String) {
-        if (_selectedDay.value != todayId) return
+        if (_selectedDay.value != todayId || _isProcessing.value) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            // Save user message
-            messageDao.insert(MessageEntity(text = text, isUser = true, dayId = todayId))
-            
+            _isProcessing.value = true
+            _inputErrorMessage.value = null
             try {
                 var fullResponse = ""
-                // We add a temporary message to the local list for streaming UI, 
-                // but we only save to DB once finished or in chunks if preferred.
-                // To keep it simple, we'll stream in UI and save at the end.
+                val flow = conversation?.sendMessageAsync(text)
                 
-                conversation?.sendMessageAsync(text)
-                    ?.catch { e ->
-                        withContext(Dispatchers.Main) {
-                            // In a real app, handle streaming errors better
-                        }
+                if (flow == null) {
+                    Log.e("ChatViewModel", "Conversation is null or flow is null")
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Conversation not initialized. Please restart the app."
                     }
-                    ?.collect { chunk ->
-                        fullResponse += chunk.toString()
-                        withContext(Dispatchers.Main) {
-                            // Update UI state for streaming (optional, since we are observing DB,
-                            // we might need a separate flow for the "in-progress" response)
-                            updateIncompleteResponse(fullResponse)
-                        }
+                    return@launch
+                }
+
+                flow.catch { e ->
+                    Log.e("ChatViewModel", "Inference stream error", e)
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Inference error: ${e.message}"
                     }
+                }.collect { chunk ->
+                    Log.d("ChatViewModel", "Chunk received: $chunk")
+                    fullResponse += chunk.toString()
+                }
                 
-                // Save model response once complete
-                messageDao.insert(MessageEntity(text = fullResponse, isUser = false, dayId = todayId))
-                _incompleteResponse.value = null
+                Log.d("ChatViewModel", "Full response: $fullResponse")
+                if (fullResponse.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Empty response from AI. Try again."
+                    }
+                } else {
+                    parseAndSave(fullResponse, text)
+                }
             } catch (e: Exception) {
-                messageDao.insert(MessageEntity(text = "Error: ${e.message}", isUser = false, dayId = todayId))
+                Log.e("ChatViewModel", "General error in sendMessage", e)
+                withContext(Dispatchers.Main) {
+                    _inputErrorMessage.value = "Error: ${e.message}"
+                }
+            } finally {
+                _isProcessing.value = false
             }
         }
     }
 
-    private val _incompleteResponse = MutableStateFlow<String?>(null)
-    val incompleteResponse: StateFlow<String?> = _incompleteResponse.asStateFlow()
+    private suspend fun parseAndSave(jsonString: String, originalInput: String) {
+        try {
+            val cleanJson = jsonString.trim().removeSurrounding("```json", "```").trim()
+            
+            if (cleanJson.startsWith("[")) {
+                val array = JSONArray(cleanJson)
+                var savedCount = 0
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    if (saveEntry(item, originalInput)) {
+                        savedCount++
+                    }
+                }
+                if (savedCount == 0 && array.length() > 0) {
+                     showInputError("AI returned invalid food data.")
+                }
+            } else {
+                val json = JSONObject(cleanJson)
+                if (!saveEntry(json, originalInput)) {
+                    if (json.has("error")) {
+                        showInputError("AI couldn't parse that. Try being more specific.")
+                    } else {
+                        showInputError("Failed to interpret AI response.")
+                    }
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                if (_inputErrorMessage.value == null) {
+                     // Success
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ChatViewModel", "Parsing error. Raw string: $jsonString", e)
+            showInputError("Failed to parse AI response. Please try again.")
+        }
+    }
 
-    private fun updateIncompleteResponse(text: String) {
-        _incompleteResponse.value = text
+    private suspend fun saveEntry(json: JSONObject, originalInput: String): Boolean {
+        if (json.has("error")) return false
+        
+        return try {
+            val entry = FoodEntry(
+                foodName = json.getString("food_item"),
+                amount = json.getString("amount"),
+                calories = json.getInt("calories"),
+                dayId = todayId,
+                originalInput = originalInput
+            )
+            foodDao.insert(entry)
+            true
+        } catch (e: Exception) {
+            Log.e("ChatViewModel", "Individual item parse error", e)
+            false
+        }
+    }
+
+    private suspend fun showInputError(message: String) {
+        withContext(Dispatchers.Main) {
+            _inputErrorMessage.value = message
+        }
+    }
+
+    fun clearInputError() {
+        _inputErrorMessage.value = null
     }
 
     override fun onCleared() {
