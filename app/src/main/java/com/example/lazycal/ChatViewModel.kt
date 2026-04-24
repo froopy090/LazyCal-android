@@ -33,6 +33,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val modelManager = ModelManager(application)
     private val db = ChatDatabase.getDatabase(application)
     private val foodDao = db.foodDao()
+    private val userConfigDao = db.userConfigDao()
     
     private val _uiState = MutableStateFlow<ChatState>(ChatState.CheckingModel)
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
@@ -59,6 +60,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         foodDao.getDailyTotal(dayId)
     }.map { it ?: 0 }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val userConfig: StateFlow<UserConfig> = userConfigDao.getUserConfig()
+        .map { it ?: UserConfig() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
+
     private val _inputErrorMessage = MutableStateFlow<String?>(null)
     val inputErrorMessage: StateFlow<String?> = _inputErrorMessage.asStateFlow()
 
@@ -76,6 +81,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
         _inputErrorMessage.value = null
+    }
+
+    fun saveUserConfig(name: String, goal: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            userConfigDao.saveUserConfig(UserConfig(name = name, dailyCalorieGoal = goal))
+        }
     }
 
     private fun checkModel() {
@@ -214,12 +225,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         showInputError("Failed to interpret AI response.")
                     }
-                }
-            }
-            
-            withContext(Dispatchers.Main) {
-                if (_inputErrorMessage.value == null) {
-                     // Success
                 }
             }
         } catch (e: Exception) {

@@ -15,6 +15,13 @@ data class FoodEntry(
     val originalInput: String
 )
 
+@Entity(tableName = "user_config")
+data class UserConfig(
+    @PrimaryKey val id: Int = 0, // Single row configuration
+    val name: String = "User",
+    val dailyCalorieGoal: Int = 2000
+)
+
 @Dao
 interface FoodDao {
     @Query("SELECT * FROM food_entries WHERE dayId = :dayId ORDER BY timestamp DESC")
@@ -36,9 +43,19 @@ interface FoodDao {
     suspend fun deleteAll()
 }
 
-@Database(entities = [FoodEntry::class], version = 2, exportSchema = false)
+@Dao
+interface UserConfigDao {
+    @Query("SELECT * FROM user_config WHERE id = 0")
+    fun getUserConfig(): Flow<UserConfig?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveUserConfig(config: UserConfig)
+}
+
+@Database(entities = [FoodEntry::class, UserConfig::class], version = 3, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun foodDao(): FoodDao
+    abstract fun userConfigDao(): UserConfigDao
 
     companion object {
         @Volatile
@@ -51,7 +68,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     ChatDatabase::class.java,
                     "lazycal_database"
                 )
-                .fallbackToDestructiveMigration() // Reset DB schema for refactor
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,10 +16,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lazycal.ui.theme.LazyCalTheme
 import kotlinx.coroutines.launch
+
+enum class TabItem(val title: String, val iconRes: Int) {
+    Tracker("Tracker", R.drawable.ic_tracker),
+    Progress("Progress", R.drawable.ic_progress)
+}
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +42,9 @@ class MainActivity : ComponentActivity() {
                 val selectedDay by viewModel.selectedDay.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
                 val inputErrorMessage by viewModel.inputErrorMessage.collectAsState()
+                
+                var currentTab by remember { mutableStateOf(TabItem.Tracker) }
+                var showSettings by remember { mutableStateOf(false) }
 
                 // Handle transient input errors via Snackbar
                 LaunchedEffect(inputErrorMessage) {
@@ -44,85 +54,112 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    drawerContent = {
-                        ModalDrawerSheet {
-                            Spacer(Modifier.height(12.dp))
-                            Text("History", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                            HorizontalDivider()
-                            LazyColumn {
-                                items(archivedDays) { day ->
-                                    NavigationDrawerItem(
-                                        label = { Text(day) },
-                                        selected = day == selectedDay,
-                                        onClick = {
-                                            viewModel.selectDay(day)
-                                            scope.launch { drawerState.close() }
-                                        },
-                                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                                    )
+                if (showSettings) {
+                    SettingsScreen(
+                        viewModel = viewModel,
+                        onBack = { showSettings = false }
+                    )
+                } else {
+                    ModalNavigationDrawer(
+                        drawerState = drawerState,
+                        drawerContent = {
+                            ModalDrawerSheet {
+                                Spacer(Modifier.height(12.dp))
+                                Text("History", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                                HorizontalDivider()
+                                LazyColumn {
+                                    items(archivedDays) { day ->
+                                        NavigationDrawerItem(
+                                            label = { Text(day) },
+                                            selected = day == selectedDay,
+                                            onClick = {
+                                                viewModel.selectDay(day)
+                                                scope.launch { drawerState.close() }
+                                            },
+                                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                ) {
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize(),
-                        snackbarHost = { SnackbarHost(snackbarHostState) },
-                        topBar = {
-                            TopAppBar(
-                                title = { Text("Lazy Cal Tracker") },
-                                navigationIcon = {
-                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_menu),
-                                            contentDescription = "Menu"
+                    ) {
+                        Scaffold(
+                            modifier = Modifier.fillMaxSize(),
+                            snackbarHost = { SnackbarHost(snackbarHostState) },
+                            topBar = {
+                                TopAppBar(
+                                    title = { Text("Lazy Cal") },
+                                    navigationIcon = {
+                                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_menu),
+                                                contentDescription = "Menu"
+                                            )
+                                        }
+                                    },
+                                    actions = {
+                                        IconButton(onClick = { showSettings = true }) {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_settings),
+                                                contentDescription = "Settings"
+                                            )
+                                        }
+                                    }
+                                )
+                            },
+                            bottomBar = {
+                                NavigationBar {
+                                    TabItem.values().forEach { tab ->
+                                        NavigationBarItem(
+                                            icon = { Icon(painterResource(tab.iconRes), contentDescription = tab.title) },
+                                            label = { Text(tab.title) },
+                                            selected = currentTab == tab,
+                                            onClick = { currentTab = tab }
                                         )
                                     }
-                                },
-                                actions = {
-                                    SettingsMenu(onDeleteModel = { viewModel.deleteModel() })
                                 }
-                            )
-                        }
-                    ) { innerPadding ->
-                        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                            when (uiState) {
-                                ChatState.CheckingModel -> {
-                                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                                }
-                                ChatState.ModelMissing -> {
-                                    WelcomeScreen(onDownloadClick = { viewModel.startDownload() })
-                                }
-                                ChatState.Downloading -> {
-                                    DownloadingScreen(onCheckClick = { viewModel.onDownloadComplete() })
-                                }
-                                ChatState.Initializing -> {
-                                    Column(
-                                        modifier = Modifier.align(Alignment.Center),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        CircularProgressIndicator()
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("Initializing Parser...")
+                            }
+                        ) { innerPadding ->
+                            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                                when (uiState) {
+                                    ChatState.CheckingModel -> {
+                                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                     }
-                                }
-                                ChatState.Ready -> {
-                                    ChatScreen(viewModel)
-                                }
-                                is ChatState.Error -> {
-                                    Column(
-                                        modifier = Modifier.align(Alignment.Center),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = (uiState as ChatState.Error).message,
-                                            color = Color.Red,
-                                            modifier = Modifier.padding(16.dp)
-                                        )
-                                        Button(onClick = { viewModel.onDownloadComplete() }) {
-                                            Text("Retry Initialization")
+                                    ChatState.ModelMissing -> {
+                                        WelcomeScreen(onDownloadClick = { viewModel.startDownload() })
+                                    }
+                                    ChatState.Downloading -> {
+                                        DownloadingScreen(onCheckClick = { viewModel.onDownloadComplete() })
+                                    }
+                                    ChatState.Initializing -> {
+                                        Column(
+                                            modifier = Modifier.align(Alignment.Center),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            CircularProgressIndicator()
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text("Initializing Parser...")
+                                        }
+                                    }
+                                    ChatState.Ready -> {
+                                        when (currentTab) {
+                                            TabItem.Tracker -> ChatScreen(viewModel)
+                                            TabItem.Progress -> ProgressScreen()
+                                        }
+                                    }
+                                    is ChatState.Error -> {
+                                        Column(
+                                            modifier = Modifier.align(Alignment.Center),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = (uiState as ChatState.Error).message,
+                                                color = Color.Red,
+                                                modifier = Modifier.padding(16.dp)
+                                            )
+                                            Button(onClick = { viewModel.onDownloadComplete() }) {
+                                                Text("Retry Initialization")
+                                            }
                                         }
                                     }
                                 }
@@ -137,28 +174,76 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsMenu(onDeleteModel: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
+fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
+    val userConfig by viewModel.userConfig.collectAsState()
+    
+    var name by remember(userConfig) { mutableStateOf(userConfig.name) }
+    var goal by remember(userConfig) { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
 
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_settings),
-                contentDescription = "Settings"
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text("Clear All Data & Model") },
-                onClick = {
-                    expanded = false
-                    onDeleteModel()
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(painterResource(id = R.drawable.ic_menu), contentDescription = "Back", modifier = Modifier.size(24.dp))
+                    }
                 }
             )
         }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .padding(16.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Name") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            
+            OutlinedTextField(
+                value = goal,
+                onValueChange = { if (it.all { char -> char.isDigit() }) goal = it },
+                label = { Text("Daily Calorie Goal") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = { 
+                    viewModel.saveUserConfig(name, goal.toIntOrNull() ?: 2000)
+                    onBack()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save Settings")
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Button(
+                onClick = { 
+                    viewModel.deleteModel()
+                    onBack()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("Delete All Data & Model")
+            }
+        }
+    }
+}
+
+@Composable
+fun ProgressScreen() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Progress Page (Coming Soon)", style = MaterialTheme.typography.headlineSmall)
     }
 }
 
@@ -200,11 +285,20 @@ fun DownloadingScreen(onCheckClick: () -> Unit) {
 fun ChatScreen(viewModel: ChatViewModel) {
     val entries by viewModel.foodEntries.collectAsState()
     val dailyTotal by viewModel.dailyTotal.collectAsState()
+    val userConfig by viewModel.userConfig.collectAsState()
     val isReadOnly by viewModel.isReadOnly.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
     var inputText by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        // Welcome Header
+        Text(
+            text = "Welcome, ${userConfig.name}",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
         // Daily Total Card
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -212,7 +306,13 @@ fun ChatScreen(viewModel: ChatViewModel) {
         ) {
             Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Daily Total", style = MaterialTheme.typography.labelLarge)
-                Text("$dailyTotal kcal", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+                Text("$dailyTotal / ${userConfig.dailyCalorieGoal} kcal", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+                
+                LinearProgressIndicator(
+                    progress = { (dailyTotal.toFloat() / userConfig.dailyCalorieGoal.toFloat()).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    color = if (dailyTotal > userConfig.dailyCalorieGoal) Color.Red else MaterialTheme.colorScheme.primary
+                )
             }
         }
 
