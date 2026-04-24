@@ -98,7 +98,11 @@ fun ChatScreen(viewModel: ChatViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(entries) { entry ->
-                FoodEntryItem(entry)
+                FoodEntryItem(
+                    entry = entry,
+                    onDelete = { viewModel.deleteEntry(entry) },
+                    isReadOnly = isReadOnly
+                )
             }
         }
         if (isProcessing) LinearProgressIndicator(
@@ -141,7 +145,34 @@ fun ChatScreen(viewModel: ChatViewModel) {
 }
 
 @Composable
-fun FoodEntryItem(entry: FoodEntry) {
+fun FoodEntryItem(
+    entry: FoodEntry,
+    onDelete: () -> Unit,
+    isReadOnly: Boolean
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Entry") },
+            text = { Text("Are you sure you want to delete \"${entry.foodName}\"? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete()
+                    showDeleteConfirm = false
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -165,6 +196,16 @@ fun FoodEntryItem(entry: FoodEntry) {
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
+            
+            if (!isReadOnly) {
+                IconButton(onClick = { showDeleteConfirm = true }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_delete),
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                    )
+                }
+            }
         }
     }
 }

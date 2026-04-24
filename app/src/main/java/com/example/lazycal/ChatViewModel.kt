@@ -259,6 +259,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteEntry(entry: FoodEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.delete(entry)
+        }
+    }
+
     private suspend fun showInputError(message: String) {
         withContext(Dispatchers.Main) {
             _inputErrorMessage.value = message
