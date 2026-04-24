@@ -10,6 +10,9 @@ data class FoodEntry(
     val foodName: String,
     val amount: String,
     val calories: Int,
+    val protein: Int = 0,
+    val carbs: Int = 0,
+    val fats: Int = 0,
     val timestamp: Long = System.currentTimeMillis(),
     val dayId: String, // Format: YYYY-MM-DD
     val originalInput: String
@@ -22,6 +25,14 @@ data class UserConfig(
     val dailyCalorieGoal: Int = 2000
 )
 
+data class DaySummary(
+    val dayId: String,
+    val totalCalories: Int,
+    val totalProtein: Int,
+    val totalCarbs: Int,
+    val totalFats: Int
+)
+
 @Dao
 interface FoodDao {
     @Query("SELECT * FROM food_entries WHERE dayId = :dayId ORDER BY timestamp DESC")
@@ -29,6 +40,9 @@ interface FoodDao {
 
     @Query("SELECT SUM(calories) FROM food_entries WHERE dayId = :dayId")
     fun getDailyTotal(dayId: String): Flow<Int?>
+
+    @Query("SELECT dayId, SUM(calories) as totalCalories, SUM(protein) as totalProtein, SUM(carbs) as totalCarbs, SUM(fats) as totalFats FROM food_entries GROUP BY dayId ORDER BY dayId DESC")
+    fun getAllDaySummaries(): Flow<List<DaySummary>>
 
     @Query("SELECT DISTINCT dayId FROM food_entries ORDER BY dayId DESC")
     fun getAllDays(): Flow<List<String>>
@@ -52,7 +66,7 @@ interface UserConfigDao {
     suspend fun saveUserConfig(config: UserConfig)
 }
 
-@Database(entities = [FoodEntry::class, UserConfig::class], version = 3, exportSchema = false)
+@Database(entities = [FoodEntry::class, UserConfig::class], version = 4, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun foodDao(): FoodDao
     abstract fun userConfigDao(): UserConfigDao

@@ -64,6 +64,39 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .map { it ?: UserConfig() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
 
+    // Progress Page Data
+    val daySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentStreak: StateFlow<Int> = combine(daySummaries, userConfig) { summaries, config ->
+        var streak = 0
+        val summaryMap = summaries.associateBy { it.dayId }
+        val calendar = Calendar.getInstance()
+        
+        // Start from today or yesterday depending on if goal is met
+        var checkDate = dateFormat.format(calendar.time)
+        val todaySummary = summaryMap[checkDate]
+        
+        if (todaySummary == null || todaySummary.totalCalories > config.dailyCalorieGoal) {
+            // If today doesn't exist or goal isn't met, check starting from yesterday
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
+            checkDate = dateFormat.format(calendar.time)
+        }
+
+        while (true) {
+            val summary = summaryMap[checkDate]
+            if (summary != null && summary.totalCalories <= config.dailyCalorieGoal) {
+                streak++
+                calendar.add(Calendar.DAY_OF_YEAR, -1)
+                checkDate = dateFormat.format(calendar.time)
+            } else {
+                break
+            }
+        }
+        streak
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     private val _inputErrorMessage = MutableStateFlow<String?>(null)
     val inputErrorMessage: StateFlow<String?> = _inputErrorMessage.asStateFlow()
 
@@ -71,7 +104,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var conversation: Conversation? = null
 
     private val systemInstruction = """
-        You are a calorie estimation assistant. Convert the user's food description into a JSON object with the following fields: 'food_item' (String), 'amount' (String), and 'calories' (Integer). If the user describes multiple items, return a JSON array of such objects. If the input is not food or is nonsensical, return '{"error": "invalid"}'. Return ONLY JSON.
+        You are a calorie and macro estimation assistant. Convert the user's food description into a JSON object with the following fields: 
+        'food_item' (String), 'amount' (String), 'calories' (Integer), 'protein' (Integer grams), 'carbs' (Integer grams), 'fats' (Integer grams). 
+        If the user describes multiple items, return a JSON array of such objects. 
+        If the input is not food or is nonsensical, return '{"error": "invalid"}'. 
+        Return ONLY JSON.
     """.trimIndent()
 
     init {
@@ -241,6 +278,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 foodName = json.getString("food_item"),
                 amount = json.getString("amount"),
                 calories = json.getInt("calories"),
+                protein = json.optInt("protein", 0),
+                carbs = json.optInt("carbs", 0),
+                fats = json.optInt("fats", 0),
                 dayId = todayId,
                 originalInput = originalInput
             )
