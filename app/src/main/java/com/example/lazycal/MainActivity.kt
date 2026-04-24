@@ -48,14 +48,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LazyCalTheme {
-                val viewModel: ChatViewModel = viewModel()
-                val uiState by viewModel.uiState.collectAsState()
+                val chatViewModel: ChatViewModel = viewModel()
+                val progressViewModel: ProgressViewModel = viewModel()
+                
+                val uiState by chatViewModel.uiState.collectAsState()
                 val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
                 val scope = rememberCoroutineScope()
-                val archivedDays by viewModel.archivedDays.collectAsState()
-                val selectedDay by viewModel.selectedDay.collectAsState()
+                val archivedDays by chatViewModel.archivedDays.collectAsState()
+                val selectedDay by chatViewModel.selectedDay.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
-                val inputErrorMessage by viewModel.inputErrorMessage.collectAsState()
+                val inputErrorMessage by chatViewModel.inputErrorMessage.collectAsState()
                 
                 var currentTab by remember { mutableStateOf(TabItem.Tracker) }
                 var showSettings by remember { mutableStateOf(false) }
@@ -63,12 +65,12 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(inputErrorMessage) {
                     inputErrorMessage?.let {
                         snackbarHostState.showSnackbar(it)
-                        viewModel.clearInputError()
+                        chatViewModel.clearInputError()
                     }
                 }
 
                 if (showSettings) {
-                    SettingsScreen(viewModel = viewModel, onBack = { showSettings = false })
+                    SettingsScreen(viewModel = chatViewModel, onBack = { showSettings = false })
                 } else {
                     ModalNavigationDrawer(
                         drawerState = drawerState,
@@ -83,7 +85,7 @@ class MainActivity : ComponentActivity() {
                                             label = { Text(day) },
                                             selected = day == selectedDay,
                                             onClick = {
-                                                viewModel.selectDay(day)
+                                                chatViewModel.selectDay(day)
                                                 scope.launch { drawerState.close() }
                                             },
                                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -113,7 +115,7 @@ class MainActivity : ComponentActivity() {
                             },
                             bottomBar = {
                                 NavigationBar {
-                                    TabItem.values().forEach { tab ->
+                                    TabItem.entries.forEach { tab ->
                                         NavigationBarItem(
                                             icon = { Icon(painterResource(tab.iconRes), contentDescription = tab.title) },
                                             label = { Text(tab.title) },
@@ -127,8 +129,8 @@ class MainActivity : ComponentActivity() {
                             Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                                 when (uiState) {
                                     ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                                    ChatState.ModelMissing -> WelcomeScreen(onDownloadClick = { viewModel.startDownload() })
-                                    ChatState.Downloading -> DownloadingScreen(onCheckClick = { viewModel.onDownloadComplete() })
+                                    ChatState.ModelMissing -> WelcomeScreen(onDownloadClick = { chatViewModel.startDownload() })
+                                    ChatState.Downloading -> DownloadingScreen(onCheckClick = { chatViewModel.onDownloadComplete() })
                                     ChatState.Initializing -> Column(
                                         modifier = Modifier.align(Alignment.Center),
                                         horizontalAlignment = Alignment.CenterHorizontally
@@ -139,8 +141,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                     ChatState.Ready -> {
                                         when (currentTab) {
-                                            TabItem.Tracker -> ChatScreen(viewModel)
-                                            TabItem.Progress -> ProgressScreen(viewModel)
+                                            TabItem.Tracker -> ChatScreen(chatViewModel)
+                                            TabItem.Progress -> ProgressScreen(progressViewModel, chatViewModel)
                                         }
                                     }
                                     is ChatState.Error -> Column(
@@ -148,7 +150,7 @@ class MainActivity : ComponentActivity() {
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Text(text = (uiState as ChatState.Error).message, color = Color.Red, modifier = Modifier.padding(16.dp))
-                                        Button(onClick = { viewModel.onDownloadComplete() }) { Text("Retry") }
+                                        Button(onClick = { chatViewModel.onDownloadComplete() }) { Text("Retry") }
                                     }
                                 }
                             }
@@ -161,11 +163,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ProgressScreen(viewModel: ChatViewModel) {
+fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
     val streak by viewModel.currentStreak.collectAsState()
     val summaries by viewModel.daySummaries.collectAsState()
     val userConfig by viewModel.userConfig.collectAsState()
-    val entries by viewModel.foodEntries.collectAsState()
+    val entries by chatViewModel.foodEntries.collectAsState()
 
     Column(
         modifier = Modifier
@@ -234,7 +236,7 @@ fun ProgressScreen(viewModel: ChatViewModel) {
                 Box {
                     TextButton(onClick = { expanded = true }) { Text(timeframe.name) }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        HistogramView.values().forEach { view ->
+                        HistogramView.entries.forEach { view ->
                             DropdownMenuItem(text = { Text(view.name) }, onClick = { timeframe = view; expanded = false })
                         }
                     }
@@ -271,8 +273,8 @@ fun CalendarGrid(summaries: List<DaySummary>, goal: Int) {
 
     val rows = 7
     val columns = 14 // Approx 3 months
-    val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
+    val df = SimpleDateFormat("yyyy-MM-dd", LocalLocale.current.platformLocale)
+    val monthFormat = SimpleDateFormat("MMM", LocalLocale.current.platformLocale)
 
     val startCalendar = calendar.clone() as Calendar
 
@@ -332,8 +334,8 @@ fun CalendarGrid(summaries: List<DaySummary>, goal: Int) {
 
 @Composable
 fun Histogram(summaries: List<DaySummary>, view: HistogramView, goal: Int) {
-    val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
+    val df = SimpleDateFormat("yyyy-MM-dd", LocalLocale.current.platformLocale)
+    val monthFormat = SimpleDateFormat("MMM", LocalLocale.current.platformLocale)
     val summaryMap = summaries.associateBy { it.dayId }
     
     val data = when (view) {
@@ -342,7 +344,7 @@ fun Histogram(summaries: List<DaySummary>, view: HistogramView, goal: Int) {
             cal.add(Calendar.DAY_OF_YEAR, -6)
             (0..6).map {
                 val dateStr = df.format(cal.time)
-                val label = SimpleDateFormat("E", Locale.getDefault()).format(cal.time)
+                val label = SimpleDateFormat("E", LocalLocale.current.platformLocale).format(cal.time)
                 cal.add(Calendar.DAY_OF_YEAR, 1)
                 label to (summaryMap[dateStr]?.totalCalories ?: 0)
             }
@@ -351,7 +353,7 @@ fun Histogram(summaries: List<DaySummary>, view: HistogramView, goal: Int) {
             val cal = Calendar.getInstance()
             cal.add(Calendar.MONTH, -5)
             (0..5).map {
-                val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(cal.time)
+                val monthStr = SimpleDateFormat("yyyy-MM", LocalLocale.current.platformLocale).format(cal.time)
                 val label = monthFormat.format(cal.time)
                 val avg = summaries.filter { it.dayId.startsWith(monthStr) }
                     .map { it.totalCalories }.let { if (it.isEmpty()) 0 else it.average().toInt() }
@@ -398,7 +400,7 @@ fun Histogram(summaries: List<DaySummary>, view: HistogramView, goal: Int) {
                             .fillMaxWidth()
                             .fillMaxHeight(if (maxVal > 0) value.toFloat() / maxVal else 0f)
                             .background(
-                                if (value > 0 && value <= goal) MaterialTheme.colorScheme.primary 
+                                if (value in 1..goal) MaterialTheme.colorScheme.primary
                                 else if (value > goal) Color.Red.copy(0.7f)
                                 else MaterialTheme.colorScheme.surfaceVariant,
                                 RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)

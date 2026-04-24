@@ -64,39 +64,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .map { it ?: UserConfig() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
 
-    // Progress Page Data
-    val daySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val currentStreak: StateFlow<Int> = combine(daySummaries, userConfig) { summaries, config ->
-        var streak = 0
-        val summaryMap = summaries.associateBy { it.dayId }
-        val calendar = Calendar.getInstance()
-        
-        // Start from today or yesterday depending on if goal is met
-        var checkDate = dateFormat.format(calendar.time)
-        val todaySummary = summaryMap[checkDate]
-        
-        if (todaySummary == null || todaySummary.totalCalories > config.dailyCalorieGoal) {
-            // If today doesn't exist or goal isn't met, check starting from yesterday
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-            checkDate = dateFormat.format(calendar.time)
-        }
-
-        while (true) {
-            val summary = summaryMap[checkDate]
-            if (summary != null && summary.totalCalories <= config.dailyCalorieGoal) {
-                streak++
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-                checkDate = dateFormat.format(calendar.time)
-            } else {
-                break
-            }
-        }
-        streak
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
     private val _inputErrorMessage = MutableStateFlow<String?>(null)
     val inputErrorMessage: StateFlow<String?> = _inputErrorMessage.asStateFlow()
 
