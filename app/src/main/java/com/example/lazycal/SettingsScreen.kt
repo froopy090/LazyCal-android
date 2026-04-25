@@ -41,7 +41,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(painterResource(id = R.drawable.ic_menu), contentDescription = "Back")
+                        Icon(painterResource(id = R.drawable.ic_arrow_back), contentDescription = "Back")
                     }
                 }
             )
