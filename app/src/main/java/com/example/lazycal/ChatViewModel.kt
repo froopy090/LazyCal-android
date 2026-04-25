@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
@@ -163,6 +164,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val engineConfig = EngineConfig(
                     modelPath = modelManager.modelFile.absolutePath,
                     backend = Backend.GPU(),
+                    visionBackend = Backend.GPU(),
                 )
                 
                 val engineInstance = Engine(engineConfig)
@@ -188,6 +190,58 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
+
+    fun sendImage(imagePath: String) {
+        if (_selectedDay.value != todayId || _isProcessing.value) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _isProcessing.value = true
+            _inputErrorMessage.value = null
+            try {
+                var fullResponse = ""
+                val flow = conversation?.sendMessageAsync(
+                    Contents.of(
+                        Content.ImageFile(imagePath),
+                        Content.Text("Identify the food in this image and convert it into the JSON format specified in your instructions.")
+                    )
+                )
+
+                if (flow == null) {
+                    Log.e("ChatViewModel", "Conversation is null or flow is null")
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Conversation not initialized. Please restart the app."
+                    }
+                    return@launch
+                }
+
+                flow.catch { e ->
+                    Log.e("ChatViewModel", "Inference stream error", e)
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Inference error: ${e.message}"
+                    }
+                }.collect { chunk ->
+                    Log.d("ChatViewModel", "Chunk received: $chunk")
+                    fullResponse += chunk.toString()
+                }
+
+                Log.d("ChatViewModel", "Full response: $fullResponse")
+                if (fullResponse.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Empty response from AI. Try again."
+                    }
+                } else {
+                    parseAndSave(fullResponse, "Image Analysis")
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "General error in sendImage", e)
+                withContext(Dispatchers.Main) {
+                    _inputErrorMessage.value = "Error: ${e.message}"
+                }
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
 
     fun sendMessage(text: String) {
         if (_selectedDay.value != todayId || _isProcessing.value) return

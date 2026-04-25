@@ -1,5 +1,10 @@
 package com.example.lazycal
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,11 +47,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.example.lazycal.ui.theme.LazyCalTheme
+import java.io.File
 import java.util.Calendar
 
 @Composable
@@ -96,6 +108,45 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val selectedDay by viewModel.selectedDay.collectAsState()
     var inputText by remember { mutableStateOf("") }
 
+    val context = LocalContext.current
+    val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
+    val imageUri = remember {
+        FileProvider.getUriForFile(context, "${context.packageName}.provider", tempFile)
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            viewModel.sendImage(tempFile.absolutePath)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            cameraLauncher.launch(imageUri)
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            try {
+                val inputStream = context.contentResolver.openInputStream(it)
+                val file = File(context.externalCacheDir, "gallery_temp.jpg")
+                file.outputStream().use { output ->
+                    inputStream?.copyTo(output)
+                }
+                viewModel.sendImage(file.absolutePath)
+            } catch (e: Exception) {
+                android.util.Log.e("ChatScreen", "Failed to load image from gallery", e)
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         WeeklyTracker(
             weeklySummaries = weeklySummaries,
@@ -146,6 +197,31 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     enabled = !isProcessing,
                     singleLine = true
                 )
+                IconButton(
+                    onClick = {
+                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                            cameraLauncher.launch(imageUri)
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                    enabled = !isProcessing
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = "Camera"
+                    )
+                }
+                IconButton(
+                    onClick = { galleryLauncher.launch("image/*") },
+                    enabled = !isProcessing
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = "Gallery"
+                    )
+                }
                 IconButton(
                     onClick = {
                         if (inputText.isNotBlank()) {
