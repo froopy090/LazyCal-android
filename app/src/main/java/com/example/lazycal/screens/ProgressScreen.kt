@@ -1,5 +1,6 @@
-package com.example.lazycal
+package com.example.lazycal.screens
 
+import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,9 +43,12 @@ import com.example.lazycal.ui.theme.LazyCalTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.lazycal.ChatViewModel
+import com.example.lazycal.DaySummary
+import com.example.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
+import java.util.Date
 
 @Composable
 fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
@@ -54,7 +58,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
     val entries by chatViewModel.foodEntries.collectAsState()
 
     val locale = LocalLocale.current.platformLocale
-    val todayId = remember { SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date()) }
+    val todayId = remember { SimpleDateFormat("yyyy-MM-dd", locale).format(Date()) }
     val metToday = remember(summaries, userConfig, todayId) {
         summaries.find { it.dayId == todayId }?.let { it.totalCalories <= userConfig.dailyCalorieGoal } ?: false
     }
@@ -309,10 +313,10 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
 
             // Draw Y-Axis labels
             val ySteps = 4
-            val paint = android.graphics.Paint().apply {
+            val paint = Paint().apply {
                 this.color = labelColor
                 this.textSize = 10.sp.toPx()
-                this.textAlign = android.graphics.Paint.Align.RIGHT
+                this.textAlign = Paint.Align.RIGHT
             }
             for (i in 0..ySteps) {
                 val valY = (yMax / ySteps) * i
@@ -401,10 +405,10 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
                     pair.first,
                     x,
                     height,
-                    android.graphics.Paint().apply {
+                    Paint().apply {
                         this.color = labelColor
                         this.textSize = 12.sp.toPx()
-                        this.textAlign = android.graphics.Paint.Align.CENTER
+                        this.textAlign = Paint.Align.CENTER
                     }
                 )
             }

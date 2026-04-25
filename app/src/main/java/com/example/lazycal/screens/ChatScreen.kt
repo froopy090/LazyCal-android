@@ -1,8 +1,9 @@
-package com.example.lazycal
+package com.example.lazycal.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -53,6 +54,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.example.lazycal.ChatViewModel
+import com.example.lazycal.DaySummary
+import com.example.lazycal.FoodEntry
+import com.example.lazycal.R
 import com.example.lazycal.ui.theme.LazyCalTheme
 import java.io.File
 import java.util.Calendar
@@ -141,7 +146,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 }
                 viewModel.sendImage(file.absolutePath)
             } catch (e: Exception) {
-                android.util.Log.e("ChatScreen", "Failed to load image from gallery", e)
+                Log.e("ChatScreen", "Failed to load image from gallery", e)
             }
         }
     }

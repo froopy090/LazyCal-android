@@ -1,4 +1,4 @@
-package com.example.lazycal
+package com.example.lazycal.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.lazycal.ChatViewModel
+import com.example.lazycal.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -36,6 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.lazycal.screens.ChatScreen
+import com.example.lazycal.screens.DownloadingScreen
+import com.example.lazycal.screens.HistoryScreen
+import com.example.lazycal.screens.ProgressScreen
+import com.example.lazycal.screens.SettingsScreen
+import com.example.lazycal.screens.WelcomeScreen
 import com.example.lazycal.ui.theme.LazyCalTheme
 
 enum class TabItem(val title: String, val iconRes: Int) {
@@ -131,8 +137,13 @@ class MainActivity : ComponentActivity() {
                                 ChatState.Ready -> {
                                     when (currentTab) {
                                         TabItem.Tracker -> ChatScreen(chatViewModel)
-                                        TabItem.Progress -> ProgressScreen(progressViewModel, chatViewModel)
-                                        TabItem.History -> HistoryScreen(chatViewModel, onDaySelected = { currentTab = TabItem.Tracker })
+                                        TabItem.Progress -> ProgressScreen(
+                                            progressViewModel,
+                                            chatViewModel
+                                        )
+                                        TabItem.History -> HistoryScreen(
+                                            chatViewModel,
+                                            onDaySelected = { currentTab = TabItem.Tracker })
                                     }
                                 }
                                 is ChatState.Error -> Column(
