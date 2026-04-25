@@ -1,14 +1,12 @@
 package com.example.lazycal
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,25 +14,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,8 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
     val userConfig by viewModel.userConfig.collectAsState()
     val entries by chatViewModel.foodEntries.collectAsState()
 
+    val cardColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -57,235 +60,329 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        // 1. Streak Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-        ) {
-            Row(
-                modifier = Modifier.padding(24.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "🔥", fontSize = 40.sp)
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(text = "Current Streak", style = MaterialTheme.typography.labelLarge)
-                    Text(text = "$streak Days", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        Text(
+            text = "Progress",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
 
-        // 2. Macro Distribution Bar
-        Column {
-            Text(text = "Today's Macros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
+        // 1. Top Cards Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             val totalProtein = entries.sumOf { it.protein }
             val totalCarbs = entries.sumOf { it.carbs }
             val totalFats = entries.sumOf { it.fats }
             
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                if (totalProtein > 0) Box(Modifier.weight(totalProtein.toFloat()).fillMaxHeight().background(Color(0xFF2196F3)))
-                if (totalCarbs > 0) Box(Modifier.weight(totalCarbs.toFloat()).fillMaxHeight().background(Color(0xFF4CAF50)))
-                if (totalFats > 0) Box(Modifier.weight(totalFats.toFloat()).fillMaxHeight().background(Color(0xFFFF9800)))
-            }
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                MacroLabel("Protein", "${totalProtein}g", Color(0xFF2196F3))
-                MacroLabel("Carbs", "${totalCarbs}g", Color(0xFF4CAF50))
-                MacroLabel("Fats", "${totalFats}g", Color(0xFFFF9800))
-            }
+            MacroCircleCard(
+                modifier = Modifier.weight(1.2f),
+                protein = totalProtein,
+                carbs = totalCarbs,
+                fats = totalFats,
+                backgroundColor = cardColor
+            )
+            
+            StreakProgressCard(
+                modifier = Modifier.weight(0.8f),
+                streak = streak,
+                backgroundColor = cardColor
+            )
         }
 
-        // 3. Calendar Grid (Contribution style)
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text(text = "Consistency (Last 3 Months)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
-            Spacer(modifier = Modifier.height(8.dp))
-            CalendarGrid(summaries, userConfig.dailyCalorieGoal)
-        }
-
-        // 4. Histogram
-        Column {
-            var timeframe by remember { mutableStateOf(HistogramView.Days) }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(text = "Calorie History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                var expanded by remember { mutableStateOf(false) }
-                Box {
-                    TextButton(onClick = { expanded = true }) { Text(timeframe.name) }
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        HistogramView.entries.forEach { view ->
-                            DropdownMenuItem(text = { Text(view.name) }, onClick = { timeframe = view; expanded = false })
-                        }
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Histogram(summaries, timeframe, userConfig.dailyCalorieGoal)
-        }
+        // 2. Calorie Trend Line Chart
+        CalorieTrendCard(
+            summaries = summaries,
+            goal = userConfig.dailyCalorieGoal,
+            backgroundColor = cardColor
+        )
         
         Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
 @Composable
-fun MacroLabel(label: String, value: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(12.dp).background(color, RoundedCornerShape(2.dp)))
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(text = "$label: $value", style = MaterialTheme.typography.bodySmall)
+fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, backgroundColor: Color) {
+    Card(
+        modifier = modifier.height(200.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val total = (protein + carbs + fats).toFloat().coerceAtLeast(1f)
+            val pRatio = protein / total
+            val cRatio = carbs / total
+            val fRatio = fats / total
+
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeWidth = 10.dp.toPx()
+                    val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+                    val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                    
+                    drawArc(
+                        color = Color(0xFF2196F3), // Protein
+                        startAngle = -90f,
+                        sweepAngle = 360f * pRatio,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(strokeWidth)
+                    )
+                    drawArc(
+                        color = Color(0xFF4CAF50), // Carbs
+                        startAngle = -90f + (360f * pRatio),
+                        sweepAngle = 360f * cRatio,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(strokeWidth)
+                    )
+                    drawArc(
+                        color = Color(0xFFFF9800), // Fats
+                        startAngle = -90f + (360f * (pRatio + cRatio)),
+                        sweepAngle = 360f * fRatio,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(strokeWidth)
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${total.toInt()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("total g", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MacroLegendItem(Color(0xFF2196F3), "Protein", "${protein}g")
+                MacroLegendItem(Color(0xFF4CAF50), "Carbs", "${carbs}g")
+                MacroLegendItem(Color(0xFFFF9800), "Fats", "${fats}g")
+            }
+        }
     }
 }
 
 @Composable
-fun CalendarGrid(summaries: List<DaySummary>, goal: Int) {
-    val summaryMap = summaries.associateBy { it.dayId }
-    val calendar = Calendar.getInstance()
-    calendar.add(Calendar.MONTH, -2) 
-    calendar.set(Calendar.DAY_OF_MONTH, 1)
-    
-    while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
-        calendar.add(Calendar.DAY_OF_YEAR, -1)
+fun MacroLegendItem(color: Color, label: String, amount: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+        Spacer(modifier = Modifier.width(6.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(amount, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+        }
     }
+}
 
-    val rows = 7
-    val columns = 14
-    val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
-
-    val startCalendar = calendar.clone() as Calendar
-
-    Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-        Row(modifier = Modifier.padding(start = 32.dp)) {
-            val monthCalendar = startCalendar.clone() as Calendar
-            for (c in 0 until columns) {
-                if (monthCalendar.get(Calendar.DAY_OF_MONTH) <= 7) {
-                    Text(
-                        text = monthFormat.format(monthCalendar.time),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.width(16.dp * 7)
+@Composable
+fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) {
+    Card(
+        modifier = modifier.height(200.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp).fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(text = "🔥", fontSize = 44.sp)
+            Text(
+                text = streak.toString(),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFFFF9800)
+            )
+            Text(text = "Day Streak", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(7) { i ->
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (i < (streak % 7)) Color(0xFFFF9800) else Color.LightGray.copy(0.4f))
                     )
-                } else {
-                    Spacer(modifier = Modifier.width(16.dp))
                 }
-                monthCalendar.add(Calendar.DAY_OF_YEAR, 7)
             }
         }
+    }
+}
 
-        Row {
-            val weekDays = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-            Column(modifier = Modifier.padding(end = 8.dp)) {
-                weekDays.forEach { day ->
-                    Text(text = day, fontSize = 10.sp, modifier = Modifier.height(16.dp))
+@Composable
+fun CalorieTrendCard(summaries: List<DaySummary>, goal: Int, backgroundColor: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "Calorie Progress", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(text = "Goal: $goal", style = MaterialTheme.typography.labelSmall)
                 }
             }
             
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                val gridCalendar = startCalendar.clone() as Calendar
-                for (c in 0 until columns) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (r in 0 until rows) {
-                            val dateStr = df.format(gridCalendar.time)
-                            val summary = summaryMap[dateStr]
-                            val isSuccess = summary != null && summary.totalCalories <= goal
-                            
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .background(
-                                        if (isSuccess) Color(0xFF4CAF50) else MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(2.dp)
-                                    )
-                                    .border(0.5.dp, Color.LightGray.copy(0.3f), RoundedCornerShape(2.dp))
-                            )
-                            gridCalendar.add(Calendar.DAY_OF_YEAR, 1)
-                        }
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            CalorieLineChart(summaries, goal)
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-fun Histogram(summaries: List<DaySummary>, view: HistogramView, goal: Int) {
-    val df = SimpleDateFormat("yyyy-MM-dd", LocalLocale.current.platformLocale)
-    val monthFormat = SimpleDateFormat("MMM", LocalLocale.current.platformLocale)
+fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
+    val locale = LocalLocale.current.platformLocale
+    val df = SimpleDateFormat("yyyy-MM-dd", locale)
+    val dayFormat = SimpleDateFormat("E", locale)
     val summaryMap = summaries.associateBy { it.dayId }
     
-    val data = when (view) {
-        HistogramView.Days -> {
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.DAY_OF_YEAR, -6)
-            (0..6).map {
-                val dateStr = df.format(cal.time)
-                val label = SimpleDateFormat("E", LocalLocale.current.platformLocale).format(cal.time)
-                cal.add(Calendar.DAY_OF_YEAR, 1)
-                label to (summaryMap[dateStr]?.totalCalories ?: 0)
-            }
-        }
-        HistogramView.Months -> {
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.MONTH, -5)
-            (0..5).map {
-                val monthStr = SimpleDateFormat("yyyy-MM", LocalLocale.current.platformLocale).format(cal.time)
-                val label = monthFormat.format(cal.time)
-                val avg = summaries.filter { it.dayId.startsWith(monthStr) }
-                    .map { it.totalCalories }.let { if (it.isEmpty()) 0 else it.average().toInt() }
-                cal.add(Calendar.MONTH, 1)
-                label to avg
-            }
-        }
-        HistogramView.Years -> {
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.YEAR, -2)
-            (0..2).map {
-                val yearStr = cal.get(Calendar.YEAR).toString()
-                val avg = summaries.filter { it.dayId.startsWith(yearStr) }
-                    .map { it.totalCalories }.let { if (it.isEmpty()) 0 else it.average().toInt() }
-                cal.add(Calendar.YEAR, 1)
-                yearStr to avg
-            }
-        }
+    val calendar = Calendar.getInstance()
+    calendar.add(Calendar.DAY_OF_YEAR, -6)
+    
+    val data = (0..6).map {
+        val dateStr = df.format(calendar.time)
+        val label = dayFormat.format(calendar.time).first().toString()
+        calendar.add(Calendar.DAY_OF_YEAR, 1)
+        label to (summaryMap[dateStr]?.totalCalories ?: 0)
     }
 
-    val maxVal = (data.maxOf { it.second }.coerceAtLeast(goal)).toFloat() * 1.2f
+    val maxDataVal = data.maxOf { it.second }.toFloat()
+    val yMax = (maxDataVal.coerceAtLeast(goal.toFloat()) * 1.3f).coerceAtLeast(1000f)
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
-    Row(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-        Column(
-            modifier = Modifier.fillMaxHeight().padding(end = 8.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.End
-        ) {
-            Text("${maxVal.toInt()}", fontSize = 10.sp, color = Color.Gray)
-            Text("kcal", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("0", fontSize = 10.sp, color = Color.Gray)
-        }
+    Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+            val paddingLeft = 40.dp.toPx()
+            val paddingBottom = 30.dp.toPx()
+            val chartWidth = width - paddingLeft
+            val chartHeight = height - paddingBottom
+            val spacing = chartWidth / (data.size - 1)
+            
+            fun getStepY(value: Float) = chartHeight - (value / yMax * chartHeight)
 
-        Row(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            data.forEach { (label, value) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(if (maxVal > 0) value.toFloat() / maxVal else 0f)
-                            .background(
-                                if (value in 1..goal) MaterialTheme.colorScheme.primary
-                                else if (value > goal) Color.Red.copy(0.7f)
-                                else MaterialTheme.colorScheme.surfaceVariant,
-                                RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
-                            )
-                    )
-                    Text(text = label, fontSize = 10.sp, maxLines = 1)
+            // Draw Y-Axis labels
+            val ySteps = 4
+            val paint = android.graphics.Paint().apply {
+                this.color = labelColor
+                this.textSize = 10.sp.toPx()
+                this.textAlign = android.graphics.Paint.Align.RIGHT
+            }
+            for (i in 0..ySteps) {
+                val valY = (yMax / ySteps) * i
+                val y = getStepY(valY)
+                drawContext.canvas.nativeCanvas.drawText(
+                    valY.toInt().toString(),
+                    paddingLeft - 8.dp.toPx(),
+                    y + 4.dp.toPx(),
+                    paint
+                )
+            }
+
+            // Draw Goal Line (Dotted)
+            val goalY = getStepY(goal.toFloat())
+            drawLine(
+                color = Color.Gray.copy(alpha = 0.3f),
+                start = Offset(paddingLeft, goalY),
+                end = Offset(width, goalY),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            val points = data.mapIndexed { index, pair ->
+                Offset(paddingLeft + index * spacing, getStepY(pair.second.toFloat()))
+            }
+
+            // Smoothing algorithm: Cubic Bezier
+            val path = Path().apply {
+                if (points.isNotEmpty()) {
+                    moveTo(points[0].x, points[0].y)
+                    for (i in 0 until points.size - 1) {
+                        val p0 = points[i]
+                        val p1 = points[i + 1]
+                        val controlPoint1 = Offset(p0.x + (p1.x - p0.x) / 2f, p0.y)
+                        val controlPoint2 = Offset(p0.x + (p1.x - p0.x) / 2f, p1.y)
+                        cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p1.x, p1.y)
+                    }
                 }
+            }
+
+            // Fill area between line and goal line
+            val fillPath = Path().apply {
+                if (points.isNotEmpty()) {
+                    moveTo(points[0].x, goalY)
+                    lineTo(points[0].x, points[0].y)
+                    for (i in 0 until points.size - 1) {
+                        val p0 = points[i]
+                        val p1 = points[i + 1]
+                        val controlPoint1 = Offset(p0.x + (p1.x - p0.x) / 2f, p0.y)
+                        val controlPoint2 = Offset(p0.x + (p1.x - p0.x) / 2f, p1.y)
+                        cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p1.x, p1.y)
+                    }
+                    lineTo(points.last().x, goalY)
+                }
+                close()
+            }
+
+            // Draw Red shading (Above Goal)
+            clipRect(top = 0f, bottom = goalY) {
+                drawPath(fillPath, color = Color.Red.copy(alpha = 0.15f))
+            }
+            // Draw Green shading (Below Goal)
+            clipRect(top = goalY, bottom = chartHeight) {
+                drawPath(fillPath, color = Color.Green.copy(alpha = 0.15f))
+            }
+
+            // Draw colored lines
+            clipRect(top = 0f, bottom = goalY) {
+                drawPath(path, color = Color.Red, style = Stroke(width = 3.dp.toPx()))
+            }
+            clipRect(top = goalY, bottom = chartHeight) {
+                drawPath(path, color = Color(0xFF4CAF50), style = Stroke(width = 3.dp.toPx()))
+            }
+
+            data.forEachIndexed { index, pair ->
+                val x = points[index].x
+                val y = points[index].y
+                val color = if (pair.second > goal) Color.Red else Color(0xFF4CAF50)
+                
+                drawCircle(
+                    color = color,
+                    radius = 5.dp.toPx(),
+                    center = Offset(x, y)
+                )
+                
+                // X Labels
+                drawContext.canvas.nativeCanvas.drawText(
+                    pair.first,
+                    x,
+                    height,
+                    android.graphics.Paint().apply {
+                        this.color = labelColor
+                        this.textSize = 12.sp.toPx()
+                        this.textAlign = android.graphics.Paint.Align.CENTER
+                    }
+                )
             }
         }
     }
