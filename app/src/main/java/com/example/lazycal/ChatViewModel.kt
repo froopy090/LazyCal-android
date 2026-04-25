@@ -227,7 +227,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
-                var fullResponse = ""
+                val fullResponse = StringBuilder()
                 val flow = conversation?.sendMessageAsync(
                     Contents.of(
                         Content.ImageFile(imagePath),
@@ -250,16 +250,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }.collect { chunk ->
                     Log.d("ChatViewModel", "Chunk received: $chunk")
-                    fullResponse += chunk.toString()
+                    fullResponse.append(chunk.toString())
                 }
 
-                Log.d("ChatViewModel", "Full response: $fullResponse")
-                if (fullResponse.isBlank()) {
+                val finalResponse = fullResponse.toString()
+                Log.d("ChatViewModel", "Full response: $finalResponse")
+                if (finalResponse.isBlank()) {
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Empty response from AI. Try again."
                     }
                 } else {
-                    parseAndSave(fullResponse, "Image Analysis")
+                    parseAndSave(finalResponse, "Image Analysis")
                 }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "General error in sendImage", e)
@@ -279,7 +280,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
-                var fullResponse = ""
+                val fullResponse = StringBuilder()
                 val flow = conversation?.sendMessageAsync(text)
                 
                 if (flow == null) {
@@ -297,16 +298,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }.collect { chunk ->
                     Log.d("ChatViewModel", "Chunk received: $chunk")
-                    fullResponse += chunk.toString()
+                    fullResponse.append(chunk.toString())
                 }
                 
-                Log.d("ChatViewModel", "Full response: $fullResponse")
-                if (fullResponse.isBlank()) {
+                val finalResponse = fullResponse.toString()
+                Log.d("ChatViewModel", "Full response: $finalResponse")
+                if (finalResponse.isBlank()) {
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Empty response from AI. Try again."
                     }
                 } else {
-                    parseAndSave(fullResponse, text)
+                    parseAndSave(finalResponse, text)
                 }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "General error in sendMessage", e)
@@ -319,7 +321,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun parseAndSave(jsonString: String, originalInput: String) {
+    private suspend fun parseAndSave(jsonString: String, originalInput: String) = withContext(Dispatchers.Default) {
         try {
             val cleanJson = jsonString.trim().removeSurrounding("```json", "```").trim()
             
@@ -351,10 +353,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun saveEntry(json: JSONObject, originalInput: String): Boolean {
-        if (json.has("error")) return false
+    private suspend fun saveEntry(json: JSONObject, originalInput: String): Boolean = withContext(Dispatchers.IO) {
+        if (json.has("error")) return@withContext false
         
-        return try {
+        return@withContext try {
             val entry = FoodEntry(
                 foodName = json.getString("food_item"),
                 amount = json.getString("amount"),
