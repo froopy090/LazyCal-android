@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -57,6 +58,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     val archivedDays: StateFlow<List<String>> = foodDao.getAllDays()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val weeklySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
+        .map { summaries ->
+            val summaryMap = summaries.associateBy { it.dayId }
+            val calendar = Calendar.getInstance()
+            // Set to Saturday of the current week to match the UI "S S M T W T F" (Sat, Sun, Mon, Tue, Wed, Thu, Fri)
+            calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
+            
+            val week = mutableListOf<DaySummary>()
+            for (i in 0 until 7) {
+                val dateStr = dateFormat.format(calendar.time)
+                week.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
+                calendar.add(Calendar.DAY_OF_YEAR, 1)
+            }
+            week
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val foodEntries: StateFlow<List<FoodEntry>> = _selectedDay.flatMapLatest { dayId ->
