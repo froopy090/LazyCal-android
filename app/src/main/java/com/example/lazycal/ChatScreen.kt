@@ -51,7 +51,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.lazycal.ui.theme.LazyCalTheme
@@ -319,7 +318,8 @@ fun CalorieSummaryCard(
     dailyTotal: Int,
     calorieGoal: Int
 ) {
-    val caloriesLeft = (calorieGoal - dailyTotal).coerceAtLeast(0)
+    val isOver = dailyTotal > calorieGoal
+    val diff = if (isOver) dailyTotal - calorieGoal else calorieGoal - dailyTotal
     val progress = (dailyTotal.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1.2f) // Allow slightly over for visual
 
     Card(
@@ -336,19 +336,19 @@ fun CalorieSummaryCard(
         ) {
             Column {
                 Text(
-                    text = caloriesLeft.toString(),
+                    text = diff.toString(),
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Calories left",
+                    text = if (isOver) "Calories over" else "Calories left",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Box(contentAlignment = Alignment.Center) {
-                val color = if (dailyTotal > calorieGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
+                val color = if (isOver) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
                 
                 Canvas(modifier = Modifier.size(100.dp)) {
                     drawArc(
@@ -366,11 +366,6 @@ fun CalorieSummaryCard(
                         style = Stroke(width = 12.dp.toPx())
                     )
                 }
-                Text(
-                    text = "🔥",
-                    fontSize = 32.sp,
-                    modifier = Modifier.align(Alignment.Center)
-                )
             }
         }
     }
