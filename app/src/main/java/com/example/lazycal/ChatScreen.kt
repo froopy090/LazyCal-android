@@ -247,7 +247,7 @@ fun WeeklyTracker(
     selectedDayId: String,
     onDayClick: (String) -> Unit
 ) {
-    val days = remember { listOf("S", "S", "M", "T", "W", "T", "F") }
+    val days = remember { listOf("S", "M", "T", "W", "T", "F", "S") }
     
     Row(
         modifier = Modifier.fillMaxWidth(),

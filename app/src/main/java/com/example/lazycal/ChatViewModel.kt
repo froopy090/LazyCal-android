@@ -65,10 +65,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .map { summaries ->
             val summaryMap = summaries.associateBy { it.dayId }
             val calendar = Calendar.getInstance()
-            // Set to Saturday of the current week to match the UI "S S M T W T F" (Sat, Sun, Mon, Tue, Wed, Thu, Fri)
-            calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-            
+            // Reliably find the Sunday of the current week by backing up from today
+            while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
+                calendar.add(Calendar.DAY_OF_YEAR, -1)
+            }
+
             val week = mutableListOf<DaySummary>()
             for (i in 0 until 7) {
                 val dateStr = dateFormat.format(calendar.time)
