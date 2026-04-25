@@ -53,6 +53,12 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
     val userConfig by viewModel.userConfig.collectAsState()
     val entries by chatViewModel.foodEntries.collectAsState()
 
+    val locale = LocalLocale.current.platformLocale
+    val todayId = remember { SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date()) }
+    val metToday = remember(summaries, userConfig, todayId) {
+        summaries.find { it.dayId == todayId }?.let { it.totalCalories <= userConfig.dailyCalorieGoal } ?: false
+    }
+
     val cardColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
 
     Column(
@@ -88,6 +94,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             StreakProgressCard(
                 modifier = Modifier.weight(0.8f),
                 streak = streak,
+                metToday = metToday,
                 backgroundColor = cardColor
             )
         }
@@ -185,8 +192,11 @@ fun MacroLegendItem(color: Color, label: String, amount: String) {
 }
 
 @Composable
-fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) {
+fun StreakProgressCard(modifier: Modifier, streak: Int, metToday: Boolean, backgroundColor: Color) {
     val themeColors = LazyCalTheme.colors
+    val todayIndex = remember { Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1 } // 0=Sun, 6=Sat
+    val endDateIndex = if (metToday) todayIndex else todayIndex - 1
+
     Card(
         modifier = modifier.height(200.dp),
         shape = RoundedCornerShape(24.dp),
@@ -197,7 +207,6 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(text = "🔥", fontSize = 44.sp)
             Text(
                 text = streak.toString(),
                 style = MaterialTheme.typography.displaySmall,
@@ -206,15 +215,20 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) 
             )
             Text(text = "Day Streak", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                repeat(7) { i ->
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (i < (streak % 7)) themeColors.fats else Color.LightGray.copy(0.4f))
-                    )
+            Spacer(modifier = Modifier.height(16.dp))
+            val days = listOf("S", "M", "T", "W", "T", "F", "S")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                days.forEachIndexed { i, day ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(day, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (i <= endDateIndex && i > endDateIndex - streak) themeColors.fats else Color.LightGray.copy(0.4f))
+                        )
+                    }
                 }
             }
         }
