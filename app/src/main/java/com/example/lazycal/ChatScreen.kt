@@ -37,13 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.lazycal.ui.theme.LazyCalTheme
 import java.util.Calendar
 
 @Composable
@@ -199,7 +199,7 @@ fun WeeklyTracker(
                     modifier = Modifier.size(40.dp)
                 ) {
                     val progress = (summary.totalCalories.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1f)
-                    val color = if (summary.totalCalories > calorieGoal) Color.Red else MaterialTheme.colorScheme.primary
+                    val color = if (summary.totalCalories > calorieGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
                     
                     Canvas(modifier = Modifier.size(36.dp)) {
                         drawArc(
@@ -270,7 +270,7 @@ fun CalorieSummaryCard(
             }
 
             Box(contentAlignment = Alignment.Center) {
-                val color = if (dailyTotal > calorieGoal) Color.Red else MaterialTheme.colorScheme.primary
+                val color = if (dailyTotal > calorieGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
                 
                 Canvas(modifier = Modifier.size(100.dp)) {
                     drawArc(

@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalLocale
+import com.example.lazycal.ui.theme.LazyCalTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,6 +104,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
 
 @Composable
 fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, backgroundColor: Color) {
+    val macroColors = LazyCalTheme.colors
     Card(
         modifier = modifier.height(200.dp),
         shape = RoundedCornerShape(24.dp),
@@ -124,7 +126,7 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
                     val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
                     
                     drawArc(
-                        color = Color(0xFF2196F3), // Protein
+                        color = macroColors.protein,
                         startAngle = -90f,
                         sweepAngle = 360f * pRatio,
                         useCenter = false,
@@ -133,7 +135,7 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
                         style = Stroke(strokeWidth)
                     )
                     drawArc(
-                        color = Color(0xFF4CAF50), // Carbs
+                        color = macroColors.carbs,
                         startAngle = -90f + (360f * pRatio),
                         sweepAngle = 360f * cRatio,
                         useCenter = false,
@@ -142,7 +144,7 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
                         style = Stroke(strokeWidth)
                     )
                     drawArc(
-                        color = Color(0xFFFF9800), // Fats
+                        color = macroColors.fats,
                         startAngle = -90f + (360f * (pRatio + cRatio)),
                         sweepAngle = 360f * fRatio,
                         useCenter = false,
@@ -160,9 +162,9 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MacroLegendItem(Color(0xFF2196F3), "Protein", "${protein}g")
-                MacroLegendItem(Color(0xFF4CAF50), "Carbs", "${carbs}g")
-                MacroLegendItem(Color(0xFFFF9800), "Fats", "${fats}g")
+                MacroLegendItem(macroColors.protein, "Protein", "${protein}g")
+                MacroLegendItem(macroColors.carbs, "Carbs", "${carbs}g")
+                MacroLegendItem(macroColors.fats, "Fats", "${fats}g")
             }
         }
     }
@@ -182,6 +184,7 @@ fun MacroLegendItem(color: Color, label: String, amount: String) {
 
 @Composable
 fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) {
+    val themeColors = LazyCalTheme.colors
     Card(
         modifier = modifier.height(200.dp),
         shape = RoundedCornerShape(24.dp),
@@ -197,7 +200,7 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) 
                 text = streak.toString(),
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFFFF9800)
+                color = themeColors.fats
             )
             Text(text = "Day Streak", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             
@@ -208,7 +211,7 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, backgroundColor: Color) 
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (i < (streak % 7)) Color(0xFFFF9800) else Color.LightGray.copy(0.4f))
+                            .background(if (i < (streak % 7)) themeColors.fats else Color.LightGray.copy(0.4f))
                     )
                 }
             }
@@ -250,6 +253,7 @@ fun CalorieTrendCard(summaries: List<DaySummary>, goal: Int, backgroundColor: Co
 
 @Composable
 fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
+    val themeColors = LazyCalTheme.colors
     val locale = LocalLocale.current.platformLocale
     val df = SimpleDateFormat("yyyy-MM-dd", locale)
     val dayFormat = SimpleDateFormat("E", locale)
@@ -346,25 +350,25 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
 
             // Draw Red shading (Above Goal)
             clipRect(top = 0f, bottom = goalY) {
-                drawPath(fillPath, color = Color.Red.copy(alpha = 0.15f))
+                drawPath(fillPath, color = themeColors.errorShading)
             }
             // Draw Green shading (Below Goal)
             clipRect(top = goalY, bottom = chartHeight) {
-                drawPath(fillPath, color = Color.Green.copy(alpha = 0.15f))
+                drawPath(fillPath, color = themeColors.successShading)
             }
 
             // Draw colored lines
             clipRect(top = 0f, bottom = goalY) {
-                drawPath(path, color = Color.Red, style = Stroke(width = 3.dp.toPx()))
+                drawPath(path, color = themeColors.error, style = Stroke(width = 3.dp.toPx()))
             }
             clipRect(top = goalY, bottom = chartHeight) {
-                drawPath(path, color = Color(0xFF4CAF50), style = Stroke(width = 3.dp.toPx()))
+                drawPath(path, color = themeColors.success, style = Stroke(width = 3.dp.toPx()))
             }
 
             data.forEachIndexed { index, pair ->
                 val x = points[index].x
                 val y = points[index].y
-                val color = if (pair.second > goal) Color.Red else Color(0xFF4CAF50)
+                val color = if (pair.second > goal) themeColors.error else themeColors.success
                 
                 drawCircle(
                     color = color,

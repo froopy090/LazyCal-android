@@ -42,7 +42,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -196,7 +195,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.align(Alignment.Center),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text(text = (uiState as ChatState.Error).message, color = Color.Red, modifier = Modifier.padding(16.dp))
+                                        Text(text = (uiState as ChatState.Error).message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
                                         Button(onClick = { chatViewModel.onDownloadComplete() }) { Text("Retry") }
                                     }
                                 }
