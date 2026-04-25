@@ -2,6 +2,7 @@ package com.example.lazycal
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,19 @@ class MainActivity : ComponentActivity() {
                 var currentTab by remember { mutableStateOf(TabItem.Tracker) }
                 var showSettings by remember { mutableStateOf(false) }
 
+                val isReadOnly by chatViewModel.isReadOnly.collectAsState()
+
+                BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly) {
+                    if (showSettings) {
+                        showSettings = false
+                    } else if (currentTab != TabItem.Tracker) {
+                        currentTab = TabItem.Tracker
+                        chatViewModel.resetToToday()
+                    } else if (isReadOnly) {
+                        chatViewModel.resetToToday()
+                    }
+                }
+
                 LaunchedEffect(inputErrorMessage) {
                     inputErrorMessage?.let {
                         snackbarHostState.showSnackbar(it)
@@ -95,13 +109,25 @@ class MainActivity : ComponentActivity() {
                                 Spacer(Modifier.height(12.dp))
                                 Text("History", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
                                 HorizontalDivider()
+                                NavigationDrawerItem(
+                                    label = { Text("Today") },
+                                    selected = !isReadOnly && currentTab == TabItem.Tracker,
+                                    onClick = {
+                                        chatViewModel.resetToToday()
+                                        currentTab = TabItem.Tracker
+                                        scope.launch { drawerState.close() }
+                                    },
+                                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                                )
+                                HorizontalDivider()
                                 LazyColumn {
-                                    items(archivedDays) { day ->
+                                    items(archivedDays.filter { it != chatViewModel.todayId }) { day ->
                                         NavigationDrawerItem(
                                             label = { Text(day) },
-                                            selected = day == selectedDay,
+                                            selected = day == selectedDay && currentTab == TabItem.Tracker,
                                             onClick = {
                                                 chatViewModel.selectDay(day)
+                                                currentTab = TabItem.Tracker
                                                 scope.launch { drawerState.close() }
                                             },
                                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -129,18 +155,23 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             },
-                            bottomBar = {
-                                NavigationBar {
-                                    TabItem.entries.forEach { tab ->
-                                        NavigationBarItem(
-                                            icon = { Icon(painterResource(tab.iconRes), contentDescription = tab.title) },
-                                            label = { Text(tab.title) },
-                                            selected = currentTab == tab,
-                                            onClick = { currentTab = tab }
-                                        )
+                                bottomBar = {
+                                    NavigationBar {
+                                        TabItem.entries.forEach { tab ->
+                                            NavigationBarItem(
+                                                icon = { Icon(painterResource(tab.iconRes), contentDescription = tab.title) },
+                                                label = { Text(tab.title) },
+                                                selected = currentTab == tab,
+                                                onClick = {
+                                                    if (tab == TabItem.Tracker) {
+                                                        chatViewModel.resetToToday()
+                                                    }
+                                                    currentTab = tab
+                                                }
+                                            )
+                                        }
                                     }
                                 }
-                            }
                         ) { innerPadding ->
                             Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                                 when (uiState) {

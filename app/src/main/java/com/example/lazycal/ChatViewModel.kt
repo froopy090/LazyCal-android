@@ -47,7 +47,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    private val todayId = dateFormat.format(Date())
+    val todayId = dateFormat.format(Date())
 
     private val _selectedDay = MutableStateFlow(todayId)
     val selectedDay: StateFlow<String> = _selectedDay.asStateFlow()
@@ -92,6 +92,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
+        _inputErrorMessage.value = null
+    }
+
+    fun resetToToday() {
+        _selectedDay.value = todayId
         _inputErrorMessage.value = null
     }
 
