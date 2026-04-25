@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,6 +106,12 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
 @Composable
 fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, backgroundColor: Color) {
     val macroColors = LazyCalTheme.colors
+    
+    val total = remember(protein, carbs, fats) { (protein + carbs + fats).toFloat().coerceAtLeast(1f) }
+    val pRatio = remember(protein, total) { protein / total }
+    val cRatio = remember(carbs, total) { carbs / total }
+    val fRatio = remember(fats, total) { fats / total }
+
     Card(
         modifier = modifier.height(200.dp),
         shape = RoundedCornerShape(24.dp),
@@ -114,11 +121,6 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
             modifier = Modifier.padding(16.dp).fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val total = (protein + carbs + fats).toFloat().coerceAtLeast(1f)
-            val pRatio = protein / total
-            val cRatio = carbs / total
-            val fRatio = fats / total
-
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val strokeWidth = 10.dp.toPx()
@@ -255,22 +257,25 @@ fun CalorieTrendCard(summaries: List<DaySummary>, goal: Int, backgroundColor: Co
 fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
     val themeColors = LazyCalTheme.colors
     val locale = LocalLocale.current.platformLocale
-    val df = SimpleDateFormat("yyyy-MM-dd", locale)
-    val dayFormat = SimpleDateFormat("E", locale)
-    val summaryMap = summaries.associateBy { it.dayId }
     
-    val calendar = Calendar.getInstance()
-    calendar.add(Calendar.DAY_OF_YEAR, -6)
-    
-    val data = (0..6).map {
-        val dateStr = df.format(calendar.time)
-        val label = dayFormat.format(calendar.time).first().toString()
-        calendar.add(Calendar.DAY_OF_YEAR, 1)
-        label to (summaryMap[dateStr]?.totalCalories ?: 0)
+    val data = remember(summaries, locale) {
+        val df = SimpleDateFormat("yyyy-MM-dd", locale)
+        val dayFormat = SimpleDateFormat("E", locale)
+        val summaryMap = summaries.associateBy { it.dayId }
+        
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_YEAR, -6)
+        
+        (0..6).map {
+            val dateStr = df.format(calendar.time)
+            val label = dayFormat.format(calendar.time).first().toString()
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+            label to (summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0)).totalCalories
+        }
     }
 
-    val maxDataVal = data.maxOf { it.second }.toFloat()
-    val yMax = (maxDataVal.coerceAtLeast(goal.toFloat()) * 1.3f).coerceAtLeast(1000f)
+    val maxDataVal = remember(data) { data.maxOf { it.second }.toFloat() }
+    val yMax = remember(maxDataVal, goal) { (maxDataVal.coerceAtLeast(goal.toFloat()) * 1.3f).coerceAtLeast(1000f) }
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
     Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
@@ -281,7 +286,7 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
             val paddingBottom = 30.dp.toPx()
             val chartWidth = width - paddingLeft
             val chartHeight = height - paddingBottom
-            val spacing = chartWidth / (data.size - 1)
+            val spacing = if (data.size > 1) chartWidth / (data.size - 1) else chartWidth
             
             fun getStepY(value: Float) = chartHeight - (value / yMax * chartHeight)
 
@@ -317,9 +322,9 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
                 Offset(paddingLeft + index * spacing, getStepY(pair.second.toFloat()))
             }
 
-            // Smoothing algorithm: Cubic Bezier
-            val path = Path().apply {
-                if (points.isNotEmpty()) {
+            if (points.isNotEmpty()) {
+                // Smoothing algorithm: Cubic Bezier
+                val path = Path().apply {
                     moveTo(points[0].x, points[0].y)
                     for (i in 0 until points.size - 1) {
                         val p0 = points[i]
@@ -329,11 +334,9 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
                         cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p1.x, p1.y)
                     }
                 }
-            }
 
-            // Fill area between line and goal line
-            val fillPath = Path().apply {
-                if (points.isNotEmpty()) {
+                // Fill area between line and goal line
+                val fillPath = Path().apply {
                     moveTo(points[0].x, goalY)
                     lineTo(points[0].x, points[0].y)
                     for (i in 0 until points.size - 1) {
@@ -344,30 +347,30 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
                         cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p1.x, p1.y)
                     }
                     lineTo(points.last().x, goalY)
+                    close()
                 }
-                close()
-            }
 
-            // Draw Red shading (Above Goal)
-            clipRect(top = 0f, bottom = goalY) {
-                drawPath(fillPath, color = themeColors.errorShading)
-            }
-            // Draw Green shading (Below Goal)
-            clipRect(top = goalY, bottom = chartHeight) {
-                drawPath(fillPath, color = themeColors.successShading)
-            }
+                // Draw Red shading (Above Goal)
+                clipRect(top = 0f, bottom = goalY) {
+                    drawPath(fillPath, color = themeColors.errorShading)
+                }
+                // Draw Green shading (Below Goal)
+                clipRect(top = goalY, bottom = chartHeight) {
+                    drawPath(fillPath, color = themeColors.successShading)
+                }
 
-            // Draw colored lines
-            clipRect(top = 0f, bottom = goalY) {
-                drawPath(path, color = themeColors.error, style = Stroke(width = 3.dp.toPx()))
-            }
-            clipRect(top = goalY, bottom = chartHeight) {
-                drawPath(path, color = themeColors.success, style = Stroke(width = 3.dp.toPx()))
+                // Draw colored lines
+                clipRect(top = 0f, bottom = goalY) {
+                    drawPath(path, color = themeColors.error, style = Stroke(width = 3.dp.toPx()))
+                }
+                clipRect(top = goalY, bottom = chartHeight) {
+                    drawPath(path, color = themeColors.success, style = Stroke(width = 3.dp.toPx()))
+                }
             }
 
             data.forEachIndexed { index, pair ->
-                val x = points[index].x
-                val y = points[index].y
+                val x = paddingLeft + index * spacing
+                val y = getStepY(pair.second.toFloat())
                 val color = if (pair.second > goal) themeColors.error else themeColors.success
                 
                 drawCircle(

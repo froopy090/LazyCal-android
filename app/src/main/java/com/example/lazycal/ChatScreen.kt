@@ -248,19 +248,21 @@ fun WeeklyTracker(
     selectedDayId: String,
     onDayClick: (String) -> Unit
 ) {
-    val days = listOf("S", "S", "M", "T", "W", "T", "F")
+    val days = remember { listOf("S", "S", "M", "T", "W", "T", "F") }
     
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         weeklySummaries.forEachIndexed { index, summary ->
-            val calendar = Calendar.getInstance()
-            val parts = summary.dayId.split("-")
-            if (parts.size == 3) {
-                calendar.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+            val dayOfMonth = remember(summary.dayId) {
+                val calendar = Calendar.getInstance()
+                val parts = summary.dayId.split("-")
+                if (parts.size == 3) {
+                    calendar.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+                }
+                calendar.get(Calendar.DAY_OF_MONTH)
             }
-            val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
             val isSelected = summary.dayId == selectedDayId
 
             Column(

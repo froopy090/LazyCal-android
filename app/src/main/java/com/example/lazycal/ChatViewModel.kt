@@ -13,6 +13,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -148,6 +149,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             engine?.close()
             conversation = null
             engine = null
+            cachedConversation = null
+            cachedEngine = null
             modelManager.deleteModel()
             foodDao.deleteAll()
             withContext(Dispatchers.Main) {
@@ -158,8 +161,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun initializeEngine() {
+        if (cachedEngine != null) {
+            engine = cachedEngine
+            conversation = cachedConversation
+            _uiState.value = ChatState.Ready
+            return
+        }
+
+        if (initializationJob?.isActive == true) {
+            _uiState.value = ChatState.Initializing
+            return
+        }
+
         _uiState.value = ChatState.Initializing
-        viewModelScope.launch(Dispatchers.IO) {
+        initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val engineConfig = EngineConfig(
                     modelPath = modelManager.modelFile.absolutePath,
@@ -176,6 +191,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 conversation = engineInstance.createConversation(conversationConfig)
                 
+                cachedEngine = engine
+                cachedConversation = conversation
+                
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Ready
                 }
@@ -186,6 +204,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    companion object {
+        @Volatile
+        private var cachedEngine: Engine? = null
+        @Volatile
+        private var cachedConversation: Conversation? = null
+        private var initializationJob: Job? = null
     }
 
     private val _isProcessing = MutableStateFlow(false)
@@ -362,7 +388,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        conversation?.close()
-        engine?.close()
+        // We don't close the engine here because we cache it in the companion object
+        // for the process lifetime to avoid heavy re-initialization.
     }
 }
