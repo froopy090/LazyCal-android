@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lazycal.screens.ChatScreen
@@ -95,7 +96,9 @@ class MainActivity : ComponentActivity() {
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
                             TopAppBar(
-                                title = { Text("Lazy Cal") },
+                                title = { Text("LazyCal",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold)},
                                 actions = {
                                     IconButton(onClick = { showSettings = true }) {
                                         Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Settings")
