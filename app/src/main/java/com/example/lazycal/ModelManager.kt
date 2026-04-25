@@ -2,7 +2,6 @@ package com.example.lazycal
 
 import android.app.DownloadManager
 import android.content.Context
-import android.net.Uri
 import androidx.core.net.toUri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
