@@ -5,14 +5,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -26,7 +31,6 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -44,18 +48,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lazycal.ui.theme.LazyCalTheme
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 enum class TabItem(val title: String, val iconRes: Int) {
     Tracker("Tracker", R.drawable.ic_tracker),
     Progress("Progress", R.drawable.ic_progress)
-}
-
-enum class HistogramView {
-    Days, Months, Years
 }
 
 class MainActivity : ComponentActivity() {
@@ -80,6 +84,30 @@ class MainActivity : ComponentActivity() {
                 var showSettings by rememberSaveable { mutableStateOf(false) }
 
                 val isReadOnly by chatViewModel.isReadOnly.collectAsState()
+
+                val categorizedDays = remember(archivedDays) {
+                    val weekAgo = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }.time
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    
+                    val thisWeek = mutableListOf<DaySummary>()
+                    val older = mutableListOf<DaySummary>()
+                    
+                    archivedDays.filter { it.dayId != chatViewModel.todayId }.forEach { summary ->
+                        try {
+                            val date = sdf.parse(summary.dayId)
+                            if (date != null && date.after(weekAgo)) {
+                                thisWeek.add(summary)
+                            } else {
+                                older.add(summary)
+                            }
+                        } catch (_: Exception) {
+                            older.add(summary)
+                        }
+                    }
+                    Pair(thisWeek, older)
+                }
+                val thisWeekDays = categorizedDays.first
+                val olderDays = categorizedDays.second
 
                 BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly) {
                     if (showSettings) {
@@ -107,31 +135,84 @@ class MainActivity : ComponentActivity() {
                         drawerContent = {
                             ModalDrawerSheet {
                                 Spacer(Modifier.height(12.dp))
-                                Text("History", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                                HorizontalDivider()
-                                NavigationDrawerItem(
-                                    label = { Text("Today") },
-                                    selected = !isReadOnly && currentTab == TabItem.Tracker,
-                                    onClick = {
-                                        chatViewModel.resetToToday()
-                                        currentTab = TabItem.Tracker
-                                        scope.launch { drawerState.close() }
-                                    },
-                                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                                )
-                                HorizontalDivider()
-                                LazyColumn {
-                                    items(archivedDays.filter { it != chatViewModel.todayId }) { day ->
+                                Text("History", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                                
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(vertical = 12.dp)
+                                ) {
+                                    item {
+                                        Text("Today", modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                        val todaySummary = archivedDays.find { it.dayId == chatViewModel.todayId }
                                         NavigationDrawerItem(
-                                            label = { Text(day) },
-                                            selected = day == selectedDay && currentTab == TabItem.Tracker,
+                                            label = {
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("Today's Track")
+                                                    if (todaySummary != null) {
+                                                        Text("${todaySummary.totalCalories} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                }
+                                            },
+                                            selected = !isReadOnly && currentTab == TabItem.Tracker,
                                             onClick = {
-                                                chatViewModel.selectDay(day)
+                                                chatViewModel.resetToToday()
                                                 currentTab = TabItem.Tracker
                                                 scope.launch { drawerState.close() }
                                             },
-                                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                            shape = RoundedCornerShape(12.dp)
                                         )
+                                        Spacer(Modifier.height(16.dp))
+                                    }
+
+                                    if (thisWeekDays.isNotEmpty()) {
+                                        item {
+                                            Text("This Week", modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                        items(thisWeekDays) { day ->
+                                            NavigationDrawerItem(
+                                                label = {
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(day.dayId)
+                                                        Text("${day.totalCalories} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                },
+                                                selected = day.dayId == selectedDay && currentTab == TabItem.Tracker,
+                                                onClick = {
+                                                    chatViewModel.selectDay(day.dayId)
+                                                    currentTab = TabItem.Tracker
+                                                    scope.launch { drawerState.close() }
+                                                },
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                        }
+                                        item { Spacer(Modifier.height(16.dp)) }
+                                    }
+
+                                    if (olderDays.isNotEmpty()) {
+                                        item {
+                                            Text("Older", modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                        items(olderDays) { day ->
+                                            NavigationDrawerItem(
+                                                label = {
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(day.dayId)
+                                                        Text("${day.totalCalories} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                },
+                                                selected = day.dayId == selectedDay && currentTab == TabItem.Tracker,
+                                                onClick = {
+                                                    chatViewModel.selectDay(day.dayId)
+                                                    currentTab = TabItem.Tracker
+                                                    scope.launch { drawerState.close() }
+                                                },
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

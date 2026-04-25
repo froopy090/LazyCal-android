@@ -58,7 +58,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isReadOnly: StateFlow<Boolean> = _selectedDay.map { it != todayId }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val archivedDays: StateFlow<List<String>> = foodDao.getAllDays()
+    val archivedDays: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val weeklySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
