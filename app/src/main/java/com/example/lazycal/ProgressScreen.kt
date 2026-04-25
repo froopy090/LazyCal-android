@@ -68,12 +68,6 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        Text(
-            text = "Progress",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
         // 1. Top Cards Row
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -124,11 +118,19 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
+        Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
+            Text(
+                text = "Today's Macros",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val strokeWidth = 10.dp.toPx()
                     val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
@@ -177,6 +179,7 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
             }
         }
     }
+}
 }
 
 @Composable
