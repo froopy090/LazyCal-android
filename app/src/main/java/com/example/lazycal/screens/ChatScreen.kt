@@ -32,16 +32,17 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -59,6 +61,10 @@ import com.example.lazycal.DaySummary
 import com.example.lazycal.FoodEntry
 import com.example.lazycal.R
 import com.example.lazycal.ui.theme.LazyCalTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
 
@@ -111,6 +117,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val weeklySummaries by viewModel.weeklySummaries.collectAsState()
     val selectedDay by viewModel.selectedDay.collectAsState()
     var inputText by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
     val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
@@ -138,15 +145,20 @@ fun ChatScreen(viewModel: ChatViewModel) {
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            try {
-                val inputStream = context.contentResolver.openInputStream(it)
-                val file = File(context.externalCacheDir, "gallery_temp.jpg")
-                file.outputStream().use { output ->
-                    inputStream?.copyTo(output)
+            scope.launch {
+                try {
+                    val file = File(context.externalCacheDir, "gallery_temp.jpg")
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(it)?.use { input ->
+                            file.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                    viewModel.sendImage(file.absolutePath)
+                } catch (e: Exception) {
+                    Log.e("ChatScreen", "Failed to load image from gallery", e)
                 }
-                viewModel.sendImage(file.absolutePath)
-            } catch (e: Exception) {
-                Log.e("ChatScreen", "Failed to load image from gallery", e)
             }
         }
     }
@@ -181,11 +193,28 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 )
             }
         }
-        if (isProcessing) LinearProgressIndicator(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-        )
+        if (isProcessing) {
+            var processingMessage by remember { mutableStateOf("LazyCal is thinking...") }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(5000)
+                    processingMessage = if (processingMessage == "LazyCal is thinking...") {
+                        "Calculating your calories..."
+                    } else {
+                        "LazyCal is thinking..."
+                    }
+                }
+            }
+            Text(
+                text = processingMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                textAlign = TextAlign.Center
+            )
+        }
         if (!isReadOnly) {
             Row(
                 modifier = Modifier

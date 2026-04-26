@@ -1,6 +1,8 @@
 package com.example.lazycal
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -26,6 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -177,25 +181,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = ChatState.Initializing
         initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val engineConfig = EngineConfig(
-                    modelPath = modelManager.modelFile.absolutePath,
-                    backend = Backend.CPU(), // Use CPU for main backend to reduce memory pressure
-                    visionBackend = Backend.GPU(), // Keep Vision on GPU for inference speed
-                )
-                
-                val engineInstance = Engine(engineConfig)
-                withContext(Dispatchers.IO) {
-                    engineInstance.initialize()
+                // Ensure all initialization work is off-thread
+                // TODO: check if device has an NPU, if yes, use that as the backend because it'll be way more efficient
+                val engineInstance = withContext(Dispatchers.IO) {
+                    val engineConfig = EngineConfig(
+                        modelPath = modelManager.modelFile.absolutePath,
+                        backend = Backend.CPU(), // Use CPU for main backend to reduce memory pressure
+                        visionBackend = Backend.CPU(), // Use CPU for vision to avoid GPU contention and UI stuttering
+                    )
+                    Engine(engineConfig).also { it.initialize() }
                 }
-                engine = engineInstance
                 
                 val conversationConfig = ConversationConfig(
                     systemInstruction = Contents.of(systemInstruction)
                 )
-                conversation = engineInstance.createConversation(conversationConfig)
+                val conversationInstance = engineInstance.createConversation(conversationConfig)
                 
-                cachedEngine = engine
-                cachedConversation = conversation
+                engine = engineInstance
+                conversation = conversationInstance
+                cachedEngine = engineInstance
+                cachedConversation = conversationInstance
                 
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Ready
@@ -227,10 +232,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
+                // Pre-process and resize image to target resolution (720x880) to reduce GPU preprocessing lag
+                val processedImagePath = withContext(Dispatchers.Default) {
+                    try {
+                        val originalFile = File(imagePath)
+                        val options = BitmapFactory.Options()
+                        val bitmap = BitmapFactory.decodeFile(originalFile.absolutePath, options)
+                        if (bitmap != null) {
+                            // Model target is approx 720x880 as seen in logs
+                            val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 720, 880, true)
+                            val outFile = File(getApplication<Application>().externalCacheDir, "processed_inference.jpg")
+                            FileOutputStream(outFile).use { out ->
+                                resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                            }
+                            if (bitmap != resizedBitmap) bitmap.recycle()
+                            resizedBitmap.recycle()
+                            outFile.absolutePath
+                        } else {
+                            imagePath
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ChatViewModel", "Image preprocessing failed", e)
+                        imagePath
+                    }
+                }
+
                 val fullResponse = StringBuilder()
                 val flow = conversation?.sendMessageAsync(
                     Contents.of(
-                        Content.ImageFile(imagePath),
+                        Content.ImageFile(processedImagePath),
                         Content.Text("Identify the food in this image and convert it into the JSON format specified in your instructions.")
                     )
                 )
