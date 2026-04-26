@@ -51,6 +51,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     var goal by remember(userConfig) { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
     var selectedTheme by remember(userConfig) { mutableStateOf(userConfig.themeMode) }
     
+    var showBackupPrompt by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -82,6 +83,29 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     }
 
     val themeOptions = listOf("auto", "light", "dark")
+
+    if (showBackupPrompt) {
+        AlertDialog(
+            onDismissRequest = { showBackupPrompt = false },
+            title = { Text("Backup your data?") },
+            text = { Text("Would you like to export your entries as a CSV file before deleting everything?") },
+            confirmButton = {
+                TextButton(onClick = { showBackupPrompt = false }) {
+                    Text("Yes, let me export")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showBackupPrompt = false
+                        showDeleteDialog = true
+                    }
+                ) {
+                    Text("No, I've already backed up")
+                }
+            }
+        )
+    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -177,7 +201,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             }
             
             Spacer(modifier = Modifier.weight(1f))
-            Button(onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
+            Button(onClick = { showBackupPrompt = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
         }
     }
 }
