@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,8 +32,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -74,11 +78,16 @@ class MainActivity : ComponentActivity() {
                 val snackbarHostState = remember { SnackbarHostState() }
                 val inputErrorMessage by chatViewModel.inputErrorMessage.collectAsState()
                 
-                var currentTab by rememberSaveable { mutableStateOf(TabItem.Tracker) }
+                val tabs = TabItem.entries
+                val pagerState = rememberPagerState(pageCount = { tabs.size })
+                val currentTab = tabs[pagerState.currentPage]
+                
                 var showSettings by rememberSaveable { mutableStateOf(false) }
 
                 val isReadOnly by chatViewModel.isReadOnly.collectAsState()
                 val detailEntry by chatViewModel.detailEntry.collectAsState()
+
+                val scope = rememberCoroutineScope()
 
                 BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly || detailEntry != null) {
                     if (detailEntry != null) {
@@ -86,7 +95,7 @@ class MainActivity : ComponentActivity() {
                     } else if (showSettings) {
                         showSettings = false
                     } else if (currentTab != TabItem.Tracker) {
-                        currentTab = TabItem.Tracker
+                        scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
                         chatViewModel.resetToToday()
                     } else if (isReadOnly) {
                         chatViewModel.resetToToday()
@@ -125,16 +134,16 @@ class MainActivity : ComponentActivity() {
                         },
                         bottomBar = {
                             NavigationBar {
-                                TabItem.entries.forEach { tab ->
+                                tabs.forEachIndexed { index, tab ->
                                     NavigationBarItem(
                                         icon = { Icon(painterResource(tab.iconRes), contentDescription = tab.title) },
                                         label = { Text(tab.title) },
-                                        selected = currentTab == tab,
+                                        selected = pagerState.currentPage == index,
                                         onClick = {
                                             if (tab == TabItem.Tracker) {
                                                 chatViewModel.resetToToday()
                                             }
-                                            currentTab = tab
+                                            scope.launch { pagerState.animateScrollToPage(index) }
                                         }
                                     )
                                 }
@@ -155,15 +164,23 @@ class MainActivity : ComponentActivity() {
                                     Text("Initializing Parser...")
                                 }
                                 ChatState.Ready -> {
-                                    when (currentTab) {
-                                        TabItem.Tracker -> ChatScreen(chatViewModel)
-                                        TabItem.Progress -> ProgressScreen(
-                                            progressViewModel,
-                                            chatViewModel
-                                        )
-                                        TabItem.History -> HistoryScreen(
-                                            chatViewModel,
-                                            onDaySelected = { currentTab = TabItem.Tracker })
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        userScrollEnabled = true
+                                    ) { page ->
+                                        when (tabs[page]) {
+                                            TabItem.Tracker -> ChatScreen(chatViewModel)
+                                            TabItem.Progress -> ProgressScreen(
+                                                progressViewModel,
+                                                chatViewModel
+                                            )
+                                            TabItem.History -> HistoryScreen(
+                                                chatViewModel,
+                                                onDaySelected = {
+                                                    scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
+                                                })
+                                        }
                                     }
                                 }
                                 is ChatState.Error -> Column(
