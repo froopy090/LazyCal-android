@@ -200,6 +200,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         Text("Daily Calorie Goal", style = MaterialTheme.typography.bodyMedium)
                         Text("${userConfig.dailyCalorieGoal} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
+                    Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                 }
             }
             
