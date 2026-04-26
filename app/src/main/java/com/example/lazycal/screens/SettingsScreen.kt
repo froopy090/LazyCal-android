@@ -68,6 +68,19 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
         }
     }
 
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                context.contentResolver.openInputStream(it)?.use { input ->
+                    val csvData = input.bufferedReader().use { it.readText() }
+                    viewModel.importFromCSV(csvData)
+                }
+            }
+        }
+    }
+
     val themeOptions = listOf("auto", "light", "dark")
 
     if (showDeleteDialog) {
@@ -143,12 +156,24 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             
             Spacer(modifier = Modifier.height(16.dp))
             Text("Data Management", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Button(
-                onClick = { exportLauncher.launch("lazycal_backup.csv") },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Export Data (CSV)")
+                Button(
+                    onClick = { exportLauncher.launch("lazycal_backup.csv") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Export (CSV)")
+                }
+                Button(
+                    onClick = { importLauncher.launch("*/*") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                ) {
+                    Text("Import (CSV)")
+                }
             }
             
             Spacer(modifier = Modifier.weight(1f))
