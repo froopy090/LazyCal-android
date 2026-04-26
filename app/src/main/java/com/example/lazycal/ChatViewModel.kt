@@ -439,6 +439,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _inputErrorMessage.value = null
     }
 
+    suspend fun getExportCSV(): String = withContext(Dispatchers.IO) {
+        val entries = foodDao.getAllEntries()
+        val csv = StringBuilder("Date,Food Item,Amount,Calories,Protein(g),Carbs(g),Fats(g),Original Input\n")
+        entries.forEach { entry ->
+            csv.append("${entry.dayId},")
+            csv.append("\"${entry.foodName.replace("\"", "\"\"")}\",")
+            csv.append("\"${entry.amount.replace("\"", "\"\"")}\",")
+            csv.append("${entry.calories},")
+            csv.append("${entry.protein},")
+            csv.append("${entry.carbs},")
+            csv.append("${entry.fats},")
+            csv.append("\"${entry.originalInput.replace("\"", "\"\"")}\"\n")
+        }
+        csv.toString()
+    }
+
     override fun onCleared() {
         super.onCleared()
         // We don't close the engine here because we cache it in the companion object

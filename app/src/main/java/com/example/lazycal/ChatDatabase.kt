@@ -56,6 +56,9 @@ interface FoodDao {
     @Query("SELECT DISTINCT dayId FROM food_entries ORDER BY dayId DESC")
     fun getAllDays(): Flow<List<String>>
 
+    @Query("SELECT * FROM food_entries ORDER BY timestamp DESC")
+    suspend fun getAllEntries(): List<FoodEntry>
+
     @Insert
     suspend fun insert(entry: FoodEntry)
 
