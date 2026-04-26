@@ -427,6 +427,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteEntry(entry: FoodEntry) {
         viewModelScope.launch(Dispatchers.IO) {
             foodDao.delete(entry)
+            withContext(Dispatchers.Main) {
+                if (_detailEntry.value?.id == entry.id) {
+                    _detailEntry.value = null
+                }
+            }
+        }
+    }
+
+    fun updateEntry(entry: FoodEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.update(entry)
+            withContext(Dispatchers.Main) {
+                if (_detailEntry.value?.id == entry.id) {
+                    _detailEntry.value = entry
+                }
+            }
         }
     }
 

@@ -62,6 +62,9 @@ interface FoodDao {
     @Insert
     suspend fun insert(entry: FoodEntry)
 
+    @androidx.room.Update
+    suspend fun update(entry: FoodEntry)
+
     @Delete
     suspend fun delete(entry: FoodEntry)
 

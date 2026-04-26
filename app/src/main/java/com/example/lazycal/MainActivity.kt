@@ -112,6 +112,7 @@ class MainActivity : ComponentActivity() {
                 if (detailEntry != null) {
                     FoodDetailScreen(
                         entry = detailEntry!!,
+                        viewModel = chatViewModel,
                         onBack = { chatViewModel.dismissDetail() }
                     )
                 } else if (showSettings) {
