@@ -254,6 +254,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             }
             
             Spacer(modifier = Modifier.weight(1f))
+            Text("Danger Zone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Button(onClick = { showBackupPrompt = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
         }
     }
