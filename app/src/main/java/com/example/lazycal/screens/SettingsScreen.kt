@@ -2,6 +2,7 @@ package com.example.lazycal.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,8 +51,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     val userConfig by viewModel.userConfig.collectAsState()
-    var goal by remember(userConfig) { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
-    var selectedTheme by remember(userConfig) { mutableStateOf(userConfig.themeMode) }
+    
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var tempGoal by remember { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
     
     var showBackupPrompt by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -72,10 +76,10 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
+        uri?.let { selectedUri ->
             scope.launch {
-                context.contentResolver.openInputStream(it)?.use { input ->
-                    val csvData = input.bufferedReader().use { it.readText() }
+                context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                    val csvData = input.bufferedReader().use { reader -> reader.readText() }
                     viewModel.importFromCSV(csvData)
                 }
             }
@@ -83,6 +87,38 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     }
 
     val themeOptions = listOf("auto", "light", "dark")
+
+    if (showGoalDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoalDialog = false },
+            title = { Text("Set Daily Calorie Goal") },
+            text = {
+                OutlinedTextField(
+                    value = tempGoal,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) tempGoal = it },
+                    label = { Text("Calories (kcal)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val newGoal = tempGoal.toIntOrNull() ?: userConfig.dailyCalorieGoal
+                        viewModel.saveUserConfig(newGoal, userConfig.themeMode)
+                        showGoalDialog = false
+                    }
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoalDialog = false; tempGoal = userConfig.dailyCalorieGoal.toString() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (showBackupPrompt) {
         AlertDialog(
@@ -146,7 +182,26 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Goal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            OutlinedTextField(value = goal, onValueChange = { if (it.all { c -> c.isDigit() }) goal = it }, label = { Text("Daily Calorie Goal") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { 
+                        tempGoal = userConfig.dailyCalorieGoal.toString()
+                        showGoalDialog = true 
+                    },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Daily Calorie Goal", style = MaterialTheme.typography.bodyMedium)
+                        Text("${userConfig.dailyCalorieGoal} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
@@ -157,14 +212,14 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         .fillMaxWidth()
                         .height(48.dp)
                         .selectable(
-                            selected = (text == selectedTheme),
-                            onClick = { selectedTheme = text },
+                            selected = (text == userConfig.themeMode),
+                            onClick = { viewModel.saveUserConfig(userConfig.dailyCalorieGoal, text) },
                             role = Role.RadioButton,
                         ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RadioButton(
-                        selected = (text == selectedTheme),
+                        selected = (text == userConfig.themeMode),
                         onClick = null // null recommended for accessibility with selectable modifier
                     )
                     Text(
@@ -176,9 +231,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { viewModel.saveUserConfig(goal.toIntOrNull() ?: 2000, selectedTheme); onBack() }, modifier = Modifier.fillMaxWidth()) { Text("Save") }
             
-            Spacer(modifier = Modifier.height(16.dp))
             Text("Data Management", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
