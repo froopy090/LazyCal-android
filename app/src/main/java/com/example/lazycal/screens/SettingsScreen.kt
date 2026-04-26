@@ -54,7 +54,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             OutlinedTextField(value = goal, onValueChange = { if (it.all { c -> c.isDigit() }) goal = it }, label = { Text("Goal") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
             Button(onClick = { viewModel.saveUserConfig(name, goal.toIntOrNull() ?: 2000); onBack() }, modifier = Modifier.fillMaxWidth()) { Text("Save") }
             Spacer(modifier = Modifier.weight(1f))
-            Button(onClick = { viewModel.deleteModel(); onBack() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete Data") }
+            Button(onClick = { viewModel.deleteModel(); onBack() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
         }
     }
 }
