@@ -100,6 +100,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _inputErrorMessage = MutableStateFlow<String?>(null)
     val inputErrorMessage: StateFlow<String?> = _inputErrorMessage.asStateFlow()
 
+    private val _detailEntry = MutableStateFlow<FoodEntry?>(null)
+    val detailEntry: StateFlow<FoodEntry?> = _detailEntry.asStateFlow()
+
     private var engine: Engine? = null
     private var conversation: Conversation? = null
 
@@ -118,11 +121,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
         _inputErrorMessage.value = null
+        _detailEntry.value = null
     }
 
     fun resetToToday() {
         _selectedDay.value = todayId
         _inputErrorMessage.value = null
+        _detailEntry.value = null
+    }
+
+    fun showDetail(entry: FoodEntry) {
+        _detailEntry.value = entry
+    }
+
+    fun dismissDetail() {
+        _detailEntry.value = null
     }
 
     fun saveUserConfig(name: String, goal: Int) {

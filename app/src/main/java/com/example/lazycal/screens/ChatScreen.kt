@@ -189,6 +189,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 FoodEntryItem(
                     entry = entry,
                     onDelete = { viewModel.deleteEntry(entry) },
+                    onClick = { viewModel.showDetail(entry) },
                     isReadOnly = isReadOnly
                 )
             }
@@ -409,6 +410,7 @@ fun CalorieSummaryCard(
 fun FoodEntryItem(
     entry: FoodEntry,
     onDelete: () -> Unit,
+    onClick: () -> Unit,
     isReadOnly: Boolean
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -434,7 +436,11 @@ fun FoodEntryItem(
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically

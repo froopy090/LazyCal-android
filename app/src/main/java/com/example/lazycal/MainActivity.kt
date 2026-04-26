@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lazycal.screens.ChatScreen
 import com.example.lazycal.screens.DownloadingScreen
+import com.example.lazycal.screens.FoodDetailScreen
 import com.example.lazycal.screens.HistoryScreen
 import com.example.lazycal.screens.ProgressScreen
 import com.example.lazycal.screens.SettingsScreen
@@ -69,9 +70,12 @@ class MainActivity : ComponentActivity() {
                 var showSettings by rememberSaveable { mutableStateOf(false) }
 
                 val isReadOnly by chatViewModel.isReadOnly.collectAsState()
+                val detailEntry by chatViewModel.detailEntry.collectAsState()
 
-                BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly) {
-                    if (showSettings) {
+                BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly || detailEntry != null) {
+                    if (detailEntry != null) {
+                        chatViewModel.dismissDetail()
+                    } else if (showSettings) {
                         showSettings = false
                     } else if (currentTab != TabItem.Tracker) {
                         currentTab = TabItem.Tracker
@@ -88,7 +92,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (showSettings) {
+                if (detailEntry != null) {
+                    FoodDetailScreen(
+                        entry = detailEntry!!,
+                        onBack = { chatViewModel.dismissDetail() }
+                    )
+                } else if (showSettings) {
                     SettingsScreen(viewModel = chatViewModel, onBack = { showSettings = false })
                 } else {
                     Scaffold(
