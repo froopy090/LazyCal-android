@@ -143,9 +143,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _detailEntry.value = null
     }
 
-    fun saveUserConfig(goal: Int) {
+    fun saveUserConfig(goal: Int, themeMode: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            userConfigDao.saveUserConfig(UserConfig(dailyCalorieGoal = goal))
+            userConfigDao.saveUserConfig(UserConfig(dailyCalorieGoal = goal, themeMode = themeMode))
         }
     }
 

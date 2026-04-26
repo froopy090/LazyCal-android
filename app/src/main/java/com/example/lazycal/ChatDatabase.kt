@@ -30,7 +30,8 @@ data class FoodEntry(
 @Entity(tableName = "user_config")
 data class UserConfig(
     @PrimaryKey val id: Int = 0, // Single row configuration
-    val dailyCalorieGoal: Int = 2000
+    val dailyCalorieGoal: Int = 2000,
+    val themeMode: String = "auto" // "auto", "light", "dark"
 )
 
 data class DaySummary(
@@ -74,7 +75,7 @@ interface UserConfigDao {
     suspend fun saveUserConfig(config: UserConfig)
 }
 
-@Database(entities = [FoodEntry::class, UserConfig::class], version = 5, exportSchema = false)
+@Database(entities = [FoodEntry::class, UserConfig::class], version = 6, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun foodDao(): FoodDao
     abstract fun userConfigDao(): UserConfigDao

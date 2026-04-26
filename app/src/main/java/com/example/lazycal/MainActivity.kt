@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -58,10 +59,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            LazyCalTheme {
-                val chatViewModel: ChatViewModel = viewModel()
-                val progressViewModel: ProgressViewModel = viewModel()
-                
+            val chatViewModel: ChatViewModel = viewModel()
+            val progressViewModel: ProgressViewModel = viewModel()
+            val userConfig by chatViewModel.userConfig.collectAsState()
+            
+            val darkTheme = when (userConfig.themeMode) {
+                "light" -> false
+                "dark" -> true
+                else -> isSystemInDarkTheme()
+            }
+
+            LazyCalTheme(darkTheme = darkTheme) {
                 val uiState by chatViewModel.uiState.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
                 val inputErrorMessage by chatViewModel.inputErrorMessage.collectAsState()
