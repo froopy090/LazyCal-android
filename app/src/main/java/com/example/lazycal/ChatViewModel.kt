@@ -112,6 +112,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         If the user describes multiple items, return a JSON array of such objects. 
         If the input is not food or is nonsensical, return '{"error": "invalid"}'. 
         Return ONLY JSON.
+        Use the following chain of thought protocol to estimate the calories as accurately as possible:
+        Step 1: Identify every ingredient.
+        Step 2: Estimate the mass in grams of each ingredient first.
+        Step 3: Apply a calorie per gram multiplier (e.g. fats = 9kcal/g, proteins/carbs = 4kcal/g).
+        Step 4: Sum them up.
     """.trimIndent()
 
     init {
