@@ -11,15 +11,15 @@ val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
 // Macro Colors
-val ProteinColor = Color(0xFF2196F3)
-val CarbsColor = Color(0xFF4CAF50)
-val FatsColor = Color(0xFFFF9800)
+val ProteinColor = Color(0xFF64B5F6)
+val CarbsColor = Color(0xFF81C784)
+val FatsColor = Color(0xFFFFB74D)
 
 // Status Colors
-val SuccessColor = Color(0xFF4CAF50)
-val ErrorColor = Color(0xFFF44336)
-val GoalMetColor = Color(0xFF4CAF50)
-val GoalExceededColor = Color(0xFFF44336)
+val SuccessColor = Color(0xFF81C784)
+val ErrorColor = Color(0xFFE57373)
+val GoalMetColor = Color(0xFF81C784)
+val GoalExceededColor = Color(0xFFE57373)
 
 // Shading Colors
 val SuccessShading = SuccessColor.copy(alpha = 0.15f)
