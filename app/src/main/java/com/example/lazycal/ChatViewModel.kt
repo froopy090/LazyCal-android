@@ -1,9 +1,15 @@
 package com.example.lazycal
 
 import android.app.Application
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.litertlm.Backend
@@ -120,8 +126,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         Step 4: Sum them up.
     """.trimIndent()
 
+    private var downloadId: Long = -1
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+            if (id == downloadId && id != -1L) {
+                onDownloadComplete()
+            }
+        }
+    }
+
     init {
         checkModel()
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        ContextCompat.registerReceiver(
+            application,
+            downloadReceiver,
+            filter,
+            ContextCompat.RECEIVER_EXPORTED
+        )
     }
 
     fun selectDay(dayId: String) {
@@ -160,11 +184,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startDownload() {
         _uiState.value = ChatState.Downloading
-        modelManager.downloadModel()
+        downloadId = modelManager.downloadModel()
+        if (downloadId == -1L) {
+            _uiState.value = ChatState.Error("Failed to start download")
+        }
     }
 
     fun onDownloadComplete() {
-        initializeEngine()
+        viewModelScope.launch {
+            // Give the system a moment to finalize the file
+            var retries = 5
+            while (retries > 0 && !modelManager.isModelDownloaded()) {
+                kotlinx.coroutines.delay(1000)
+                retries--
+            }
+            if (modelManager.isModelDownloaded()) {
+                initializeEngine()
+            } else {
+                _uiState.value = ChatState.Error("Model file not found after download.")
+            }
+        }
     }
 
     fun deleteModel() {
@@ -462,6 +501,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        try {
+            getApplication<Application>().unregisterReceiver(downloadReceiver)
+        } catch (e: Exception) {
+            // Receiver might not be registered
+        }
         // We don't close the engine here because we cache it in the companion object
         // for the process lifetime to avoid heavy re-initialization.
     }

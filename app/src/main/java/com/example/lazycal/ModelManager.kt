@@ -18,10 +18,12 @@ class ModelManager(private val context: Context) {
     private val _downloadProgress = MutableStateFlow<Float?>(null)
     val downloadProgress: StateFlow<Float?> = _downloadProgress
 
+    private var downloadId: Long = -1
+
     fun isModelDownloaded(): Boolean = modelFile.exists()
 
-    fun downloadModel() {
-        if (isModelDownloaded()) return
+    fun downloadModel(): Long {
+        if (isModelDownloaded()) return -1
 
         try {
             modelFile.parentFile?.mkdirs()
@@ -33,11 +35,13 @@ class ModelManager(private val context: Context) {
                 .setDestinationInExternalFilesDir(context, null, modelFileName)
 
             val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            downloadManager.enqueue(request)
+            downloadId = downloadManager.enqueue(request)
 
             _downloadProgress.value = 0f
+            return downloadId
         } catch (e: Exception) {
             e.printStackTrace()
+            return -1
         }
     }
 

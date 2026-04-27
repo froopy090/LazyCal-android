@@ -92,7 +92,7 @@ fun WelcomeScreen(onDownloadClick: () -> Unit) {
 }
 
 @Composable
-fun DownloadingScreen(onCheckClick: () -> Unit) {
+fun DownloadingScreen() {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -101,9 +101,12 @@ fun DownloadingScreen(onCheckClick: () -> Unit) {
         CircularProgressIndicator()
         Spacer(modifier = Modifier.height(16.dp))
         Text("Downloading model...")
-        Button(onClick = onCheckClick) {
-            Text("Check Status")
-        }
+        Text(
+            "This may take a minute depending on your connection.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
     }
 }
 

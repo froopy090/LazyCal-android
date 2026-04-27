@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
                             when (uiState) {
                                 ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 ChatState.ModelMissing -> WelcomeScreen(onDownloadClick = { chatViewModel.startDownload() })
-                                ChatState.Downloading -> DownloadingScreen(onCheckClick = { chatViewModel.onDownloadComplete() })
+                                ChatState.Downloading -> DownloadingScreen()
                                 ChatState.Initializing -> Column(
                                     modifier = Modifier.align(Alignment.Center),
                                     horizontalAlignment = Alignment.CenterHorizontally
