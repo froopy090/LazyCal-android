@@ -48,7 +48,6 @@ import com.example.lazycal.DaySummary
 import com.example.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 
 @Composable
 fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
@@ -58,9 +57,36 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
     val entries by chatViewModel.foodEntries.collectAsState()
 
     val locale = LocalLocale.current.platformLocale
-    val todayId = remember { SimpleDateFormat("yyyy-MM-dd", locale).format(Date()) }
-    val metToday = remember(summaries, userConfig, todayId) {
-        summaries.find { it.dayId == todayId }?.let { it.totalCalories <= userConfig.dailyCalorieGoal } ?: false
+    val weekSuccess = remember(summaries, userConfig, entries, locale) {
+        val df = SimpleDateFormat("yyyy-MM-dd", locale)
+        val summaryMap = summaries.associateBy { it.dayId }
+        val calendar = Calendar.getInstance()
+        
+        // Find today's date string for live comparison
+        val todayStr = df.format(calendar.time)
+        
+        // Move calendar to the Sunday of the current week
+        calendar.firstDayOfWeek = Calendar.SUNDAY
+        calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+        
+        // If set(SUNDAY) jumped forward to next week, move it back
+        if (calendar.timeInMillis > System.currentTimeMillis()) {
+            calendar.add(Calendar.WEEK_OF_YEAR, -1)
+        }
+
+        (0..6).map {
+            val dateStr = df.format(calendar.time)
+            val calories = if (dateStr == todayStr) {
+                entries.sumOf { it.calories }
+            } else {
+                summaryMap[dateStr]?.totalCalories ?: 0
+            }
+            
+            // Goal met if calories are > 0 and under/equal to goal
+            val met = calories in 1..userConfig.dailyCalorieGoal
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+            met
+        }
     }
 
     val cardColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -92,7 +118,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             StreakProgressCard(
                 modifier = Modifier.weight(0.8f),
                 streak = streak,
-                metToday = metToday,
+                weekSuccess = weekSuccess,
                 backgroundColor = cardColor
             )
         }
@@ -199,10 +225,8 @@ fun MacroLegendItem(color: Color, label: String, amount: String) {
 }
 
 @Composable
-fun StreakProgressCard(modifier: Modifier, streak: Int, metToday: Boolean, backgroundColor: Color) {
+fun StreakProgressCard(modifier: Modifier, streak: Int, weekSuccess: List<Boolean>, backgroundColor: Color) {
     val themeColors = LazyCalTheme.colors
-    val todayIndex = remember { Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1 } // 0=Sun, 6=Sat
-    val endDateIndex = if (metToday) todayIndex else todayIndex - 1
 
     Card(
         modifier = modifier.height(200.dp),
@@ -233,7 +257,7 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, metToday: Boolean, backg
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(if (i <= endDateIndex && i > endDateIndex - streak) themeColors.fats else Color.LightGray.copy(0.4f))
+                                .background(if (weekSuccess.getOrElse(i) { false }) themeColors.fats else Color.LightGray.copy(0.4f))
                         )
                     }
                 }
