@@ -122,31 +122,47 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
-                            TopAppBar(
-                                title = { Text("LazyCal",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold)},
-                                actions = {
-                                    IconButton(onClick = { showSettings = true }) {
-                                        Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Settings")
+                            if (uiState == ChatState.Ready) {
+                                TopAppBar(
+                                    title = {
+                                        Text(
+                                            "LazyCal",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    },
+                                    actions = {
+                                        IconButton(onClick = { showSettings = true }) {
+                                            Icon(
+                                                painterResource(id = R.drawable.ic_settings),
+                                                contentDescription = "Settings"
+                                            )
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         },
                         bottomBar = {
-                            NavigationBar {
-                                tabs.forEachIndexed { index, tab ->
-                                    NavigationBarItem(
-                                        icon = { Icon(painterResource(tab.iconRes), contentDescription = tab.title) },
-                                        label = { Text(tab.title) },
-                                        selected = pagerState.currentPage == index,
-                                        onClick = {
-                                            if (tab == TabItem.Tracker) {
-                                                chatViewModel.resetToToday()
+                            if (uiState == ChatState.Ready) {
+                                NavigationBar {
+                                    tabs.forEachIndexed { index, tab ->
+                                        NavigationBarItem(
+                                            icon = {
+                                                Icon(
+                                                    painterResource(tab.iconRes),
+                                                    contentDescription = tab.title
+                                                )
+                                            },
+                                            label = { Text(tab.title) },
+                                            selected = pagerState.currentPage == index,
+                                            onClick = {
+                                                if (tab == TabItem.Tracker) {
+                                                    chatViewModel.resetToToday()
+                                                }
+                                                scope.launch { pagerState.animateScrollToPage(index) }
                                             }
-                                            scope.launch { pagerState.animateScrollToPage(index) }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }
