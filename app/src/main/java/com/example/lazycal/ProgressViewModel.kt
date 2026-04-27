@@ -37,8 +37,14 @@ class ProgressViewModel(application: Application) : AndroidViewModel(application
         var checkDate = dateFormat.format(calendar.time)
         val todaySummary = summaryMap[checkDate]
         
-        if (todaySummary == null || todaySummary.totalCalories > config.dailyCalorieGoal) {
-            // If today doesn't exist or goal isn't met, check starting from yesterday
+        // If today is logged and we are OVER the goal, streak is broken immediately.
+        if (todaySummary != null && todaySummary.totalCalories > config.dailyCalorieGoal) {
+            return@combine 0
+        }
+
+        // If today is not logged, we check starting from yesterday.
+        // If today is logged and met, we check starting from today.
+        if (todaySummary == null) {
             calendar.add(Calendar.DAY_OF_YEAR, -1)
             checkDate = dateFormat.format(calendar.time)
         }
