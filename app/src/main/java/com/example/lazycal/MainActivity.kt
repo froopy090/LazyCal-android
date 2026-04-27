@@ -205,7 +205,7 @@ class MainActivity : ComponentActivity() {
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(text = (uiState as ChatState.Error).message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
-                                    Button(onClick = { chatViewModel.onDownloadComplete() }) { Text("Retry") }
+                                    Button(onClick = { chatViewModel.retry() }) { Text("Retry") }
                                 }
                             }
                         }

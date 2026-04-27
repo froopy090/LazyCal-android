@@ -190,6 +190,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun retry() {
+        if (modelManager.isModelDownloaded()) {
+            initializeEngine()
+        } else {
+            startDownload()
+        }
+    }
+
     fun onDownloadComplete() {
         viewModelScope.launch {
             // Give the system a moment to finalize the file
