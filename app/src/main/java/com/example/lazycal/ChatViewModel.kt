@@ -252,8 +252,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val engineInstance = withContext(Dispatchers.IO) {
                     val engineConfig = EngineConfig(
                         modelPath = modelManager.modelFile.absolutePath,
-                        backend = Backend.CPU(), // Use CPU for main backend to reduce memory pressure
-                        visionBackend = Backend.CPU(), // Use CPU for vision to avoid GPU contention and UI stuttering
+                        backend = Backend.GPU(),
+                        visionBackend = Backend.GPU(),
                     )
                     Engine(engineConfig).also { it.initialize() }
                 }
