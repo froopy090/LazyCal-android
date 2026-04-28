@@ -114,16 +114,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var conversation: Conversation? = null
 
     private val systemInstruction = """
-        You are a calorie and macro estimation assistant. Convert the user's food description into a JSON object with the following fields: 
-        'food_item' (String), 'amount' (String), 'calories' (Integer), 'protein' (Integer grams), 'carbs' (Integer grams), 'fats' (Integer grams). 
-        If the user describes multiple items, return a JSON array of such objects. 
-        If the input is not food or is nonsensical, return '{"error": "invalid"}'. 
-        Return ONLY JSON.
-        Use the following chain of thought protocol to estimate the calories as accurately as possible:
-        Step 1: Identify every ingredient.
-        Step 2: Estimate the mass in grams of each ingredient first.
-        Step 3: Apply a calorie per gram multiplier (e.g. fats = 9kcal/g, proteins/carbs = 4kcal/g).
-        Step 4: Sum them up.
+        You are an expert nutritionist AI. Your task is to convert food descriptions into a JSON array of objects.
+        
+        Required fields for each food item:
+        "food_item": (String) name of the item
+        "amount": (String) quantity/size
+        "calories": (Int) total calories
+        "protein": (Int) grams of protein
+        "carbs": (Int) grams of carbs
+        "fats": (Int) grams of fats
+        
+        Rules:
+        1. Output ONLY a valid JSON array. Do not include any other text, reasoning, or markdown formatting.
+        2. If multiple foods are mentioned, list each as an object in the same array.
+        3. If input is not food or is nonsense, return: {"error": "invalid"}
+        4. STOP immediately after the final closing bracket ']'. Do not repeat content.
+        
+        Estimation Method (Internal):
+        Identify components -> Estimate mass in grams -> Apply 9/4/4 kcal per gram -> Sum results.
+        Only output the final JSON.
     """.trimIndent()
 
     private var downloadId: Long = -1
@@ -352,8 +361,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _inputErrorMessage.value = "Inference error: ${e.message}"
                     }
                 }.collect { chunk ->
-                    Log.d("ChatViewModel", "Chunk received: $chunk")
                     fullResponse.append(chunk.toString())
+                    // Safety circuit breaker for loops
+                    if (fullResponse.length > 5000) {
+                        throw Exception("Response too long - possible loop detected")
+                    }
                 }
 
                 val finalResponse = fullResponse.toString()
@@ -400,8 +412,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _inputErrorMessage.value = "Inference error: ${e.message}"
                     }
                 }.collect { chunk ->
-                    Log.d("ChatViewModel", "Chunk received: $chunk")
                     fullResponse.append(chunk.toString())
+                    // Safety circuit breaker for loops
+                    if (fullResponse.length > 5000) {
+                        throw Exception("Response too long - possible loop detected")
+                    }
                 }
                 
                 val finalResponse = fullResponse.toString()
@@ -426,7 +441,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun parseAndSave(jsonString: String, originalInput: String) = withContext(Dispatchers.Default) {
         try {
-            val cleanJson = jsonString.trim().removeSurrounding("```json", "```").trim()
+            // Find the bounds of the JSON content to ignore noise or markdown
+            val startIndex = jsonString.indexOfFirst { it == '[' || it == '{' }
+            val endIndex = jsonString.indexOfLast { it == ']' || it == '}' }
+
+            val cleanJson = if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+                jsonString.substring(startIndex, endIndex + 1)
+            } else {
+                jsonString.trim().removeSurrounding("```json", "```").trim()
+            }
             
             if (cleanJson.startsWith("[")) {
                 val array = JSONArray(cleanJson)
