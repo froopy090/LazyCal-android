@@ -111,7 +111,7 @@ fun HistoryScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                items(thisWeekDays) { day ->
+                items(thisWeekDays, key = { it.dayId }) { day ->
                     NavigationDrawerItem(
                         label = {
                             Row(
@@ -148,7 +148,7 @@ fun HistoryScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                items(olderDays) { day ->
+                items(olderDays, key = { it.dayId }) { day ->
                     NavigationDrawerItem(
                         label = {
                             Row(

@@ -103,9 +103,9 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            val totalProtein = entries.sumOf { it.protein }
-            val totalCarbs = entries.sumOf { it.carbs }
-            val totalFats = entries.sumOf { it.fats }
+            val totalProtein = remember(entries) { entries.sumOf { it.protein } }
+            val totalCarbs = remember(entries) { entries.sumOf { it.carbs } }
+            val totalFats = remember(entries) { entries.sumOf { it.fats } }
             
             MacroCircleCard(
                 modifier = Modifier.weight(1.2f),

@@ -67,10 +67,13 @@ class MainActivity : ComponentActivity() {
             val progressViewModel: ProgressViewModel = viewModel()
             val userConfig by chatViewModel.userConfig.collectAsState()
             
-            val darkTheme = when (userConfig.themeMode) {
-                "light" -> false
-                "dark" -> true
-                else -> isSystemInDarkTheme()
+            val systemInDarkTheme = isSystemInDarkTheme()
+            val darkTheme = remember(userConfig.themeMode, systemInDarkTheme) {
+                when (userConfig.themeMode) {
+                    "light" -> false
+                    "dark" -> true
+                    else -> systemInDarkTheme
+                }
             }
 
             LazyCalTheme(darkTheme = darkTheme) {
@@ -78,7 +81,7 @@ class MainActivity : ComponentActivity() {
                 val snackbarHostState = remember { SnackbarHostState() }
                 val inputErrorMessage by chatViewModel.inputErrorMessage.collectAsState()
                 
-                val tabs = TabItem.entries
+                val tabs = remember { TabItem.entries }
                 val pagerState = rememberPagerState(pageCount = { tabs.size })
                 val currentTab = tabs[pagerState.currentPage]
                 
@@ -184,7 +187,9 @@ class MainActivity : ComponentActivity() {
                                     HorizontalPager(
                                         state = pagerState,
                                         modifier = Modifier.fillMaxSize(),
-                                        userScrollEnabled = true
+                                        userScrollEnabled = true,
+                                        beyondViewportPageCount = 1,
+                                        key = { tabs[it] }
                                     ) { page ->
                                         when (tabs[page]) {
                                             TabItem.Tracker -> ChatScreen(chatViewModel)

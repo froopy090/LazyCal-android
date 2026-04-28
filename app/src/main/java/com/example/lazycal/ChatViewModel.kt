@@ -279,10 +279,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 cachedConversation = conversationInstance
 
                 // Warm up the model with a tiny prompt, slightly improves UI performance at the start
-                try {
-                    conversationInstance.sendMessageAsync(".").collect {}
-                } catch (e: Exception) {
-                    Log.w("ChatViewModel", "Warm up failed", e)
+                // Move this to background so it doesn't block "Ready" state
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        conversationInstance.sendMessageAsync(".").collect {}
+                    } catch (e: Exception) {
+                        Log.w("ChatViewModel", "Warm up failed", e)
+                    }
                 }
                 
                 withContext(Dispatchers.Main) {

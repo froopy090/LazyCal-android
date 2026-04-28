@@ -188,7 +188,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(entries) { entry ->
+            items(entries, key = { it.id }) { entry ->
                 FoodEntryItem(
                     entry = entry,
                     onDelete = { viewModel.deleteEntry(entry) },
