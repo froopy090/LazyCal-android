@@ -198,19 +198,25 @@ fun ChatScreen(viewModel: ChatViewModel) {
             }
         }
         if (isProcessing) {
-            var processingMessage by remember { mutableStateOf("LazyCal is thinking...") }
+            val messages = remember {
+                listOf(
+                    "Calculating your calories...",
+                    "AI is running locally on device, this may take a sec.",
+                    "Hint: Being specific with portions leads to better results.",
+                    "Hint: If you already know the calories, just include them!",
+                    "Did you know? Accuracy is highest when you specify weights.",
+                    "Tip: You can snap a photo to let the AI identify your food."
+                )
+            }
+            var messageIndex by remember { mutableStateOf(0) }
             LaunchedEffect(Unit) {
                 while (true) {
-                    delay(5000)
-                    processingMessage = if (processingMessage == "LazyCal is thinking...") {
-                        "Calculating your calories..."
-                    } else {
-                        "LazyCal is thinking..."
-                    }
+                    delay(2500)
+                    messageIndex = (messageIndex + 1) % messages.size
                 }
             }
             Text(
-                text = processingMessage,
+                text = messages[messageIndex],
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
