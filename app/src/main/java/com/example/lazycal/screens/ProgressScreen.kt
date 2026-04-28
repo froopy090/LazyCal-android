@@ -138,7 +138,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
 fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, backgroundColor: Color) {
     val macroColors = LazyCalTheme.colors
     
-    val total = remember(protein, carbs, fats) { (protein + carbs + fats).toFloat().coerceAtLeast(1f) }
+    val total = remember(protein, carbs, fats) { (protein + carbs + fats).toFloat().coerceAtLeast(0f) }
     val pRatio = remember(protein, total) { protein / total }
     val cRatio = remember(carbs, total) { carbs / total }
     val fRatio = remember(fats, total) { fats / total }
