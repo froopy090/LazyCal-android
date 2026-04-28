@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     CircularProgressIndicator()
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text("Initializing Parser...")
+                                    Text("Warming up AI...")
                                 }
                                 ChatState.Ready -> {
                                     HorizontalPager(

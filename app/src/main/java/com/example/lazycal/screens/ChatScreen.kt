@@ -86,7 +86,7 @@ fun WelcomeScreen(onDownloadClick: () -> Unit) {
         Text("AI-powered local calorie tracking.")
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onDownloadClick) {
-            Text("Download Parser")
+            Text("Download AI Model (Gemma4)")
         }
     }
 }
