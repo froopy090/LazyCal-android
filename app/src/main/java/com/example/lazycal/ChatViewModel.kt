@@ -257,12 +257,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Ensure all initialization work is off-thread
+                // Keep the backend on CPU, app simply performs better this way
                 // TODO: check if device has an NPU, if yes, use that as the backend because it'll be way more efficient
                 val engineInstance = withContext(Dispatchers.IO) {
                     val engineConfig = EngineConfig(
                         modelPath = modelManager.modelFile.absolutePath,
-                        backend = Backend.GPU(),
-                        visionBackend = Backend.GPU(),
+                        backend = Backend.CPU(),
+                        visionBackend = Backend.CPU(),
                     )
                     Engine(engineConfig).also { it.initialize() }
                 }
