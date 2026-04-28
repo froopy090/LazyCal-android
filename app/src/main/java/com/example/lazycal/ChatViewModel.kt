@@ -45,7 +45,6 @@ sealed class ChatState {
     object CheckingModel : ChatState()
     object ModelMissing : ChatState()
     object Downloading : ChatState()
-    object Initializing : ChatState()
     object Ready : ChatState()
     data class Error(val message: String) : ChatState()
 }
@@ -185,7 +184,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun checkModel() {
         if (modelManager.isModelDownloaded()) {
-            initializeEngine()
+            _uiState.value = ChatState.Ready
         } else {
             _uiState.value = ChatState.ModelMissing
         }
@@ -216,7 +215,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 retries--
             }
             if (modelManager.isModelDownloaded()) {
-                initializeEngine()
+                _uiState.value = ChatState.Ready
             } else {
                 _uiState.value = ChatState.Error("Model file not found after download.")
             }
@@ -240,20 +239,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun initializeEngine() {
-        if (cachedEngine != null) {
-            engine = cachedEngine
-            conversation = cachedConversation
-            _uiState.value = ChatState.Ready
-            return
-        }
+    private suspend fun ensureEngineInitialized() {
+        if (engine != null && conversation != null) return
 
-        if (initializationJob?.isActive == true) {
-            _uiState.value = ChatState.Initializing
-            return
-        }
+        initializationJob?.join()
+        if (engine != null && conversation != null) return
 
-        _uiState.value = ChatState.Initializing
         initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Ensure all initialization work is off-thread
@@ -277,20 +268,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 conversation = conversationInstance
                 cachedEngine = engineInstance
                 cachedConversation = conversationInstance
-
-                // Warm up the model with a tiny prompt, slightly improves UI performance at the start
-                // Move this to background so it doesn't block "Ready" state
-                viewModelScope.launch(Dispatchers.IO) {
-                    try {
-                        conversationInstance.sendMessageAsync(".").collect {}
-                    } catch (e: Exception) {
-                        Log.w("ChatViewModel", "Warm up failed", e)
-                    }
-                }
-                
-                withContext(Dispatchers.Main) {
-                    _uiState.value = ChatState.Ready
-                }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Engine init failed", e)
                 withContext(Dispatchers.Main) {
@@ -298,6 +275,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        initializationJob?.join()
+    }
+
+    private fun initializeEngine() {
+        // No longer used for immediate initialization
     }
 
     companion object {
@@ -318,6 +300,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
+                ensureEngineInitialized()
+                if (conversation == null) return@launch
+
                 // Pre-process and resize image to target resolution (720x880) to reduce GPU preprocessing lag
                 val processedImagePath = withContext(Dispatchers.Default) {
                     try {
@@ -399,6 +384,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
+                ensureEngineInitialized()
+                if (conversation == null) return@launch
+
                 val fullResponse = StringBuilder()
                 val flow = conversation?.sendMessageAsync(text)
                 
