@@ -46,22 +46,32 @@ fun FoodDetailScreen(
     viewModel: ChatViewModel,
     onBack: () -> Unit
 ) {
-    var showCalorieDialog by remember { mutableStateOf(false) }
-    var tempCalories by remember(entry) { mutableStateOf(entry.calories.toString()) }
+    var showEditDialog by remember { mutableStateOf<EditField?>(null) }
+    var tempValue by remember(entry, showEditDialog) {
+        mutableStateOf(
+            when (showEditDialog) {
+                EditField.CALORIES -> entry.calories.toString()
+                EditField.PROTEIN -> entry.protein.toString()
+                EditField.CARBS -> entry.carbs.toString()
+                EditField.FATS -> entry.fats.toString()
+                null -> ""
+            }
+        )
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    if (showCalorieDialog) {
+    showEditDialog?.let { field ->
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 keyboardController?.hide()
-                showCalorieDialog = false 
+                showEditDialog = null
             },
-            title = { Text("Adjust Calories") },
+            title = { Text("Adjust ${field.label}") },
             text = {
                 OutlinedTextField(
-                    value = tempCalories,
-                    onValueChange = { if (it.all { c -> c.isDigit() }) tempCalories = it },
-                    label = { Text("Calories (kcal)") },
+                    value = tempValue,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) tempValue = it },
+                    label = { Text("${field.label} (${field.unit})") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -70,19 +80,26 @@ fun FoodDetailScreen(
                 TextButton(
                     onClick = {
                         keyboardController?.hide()
-                        val newCalories = tempCalories.toIntOrNull() ?: entry.calories
-                        viewModel.updateEntry(entry.copy(calories = newCalories))
-                        showCalorieDialog = false
+                        val newValue = tempValue.toIntOrNull()
+                        if (newValue != null) {
+                            val updatedEntry = when (field) {
+                                EditField.CALORIES -> entry.copy(calories = newValue)
+                                EditField.PROTEIN -> entry.copy(protein = newValue)
+                                EditField.CARBS -> entry.copy(carbs = newValue)
+                                EditField.FATS -> entry.copy(fats = newValue)
+                            }
+                            viewModel.updateEntry(updatedEntry)
+                        }
+                        showEditDialog = null
                     }
                 ) {
                     Text("Confirm")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     keyboardController?.hide()
-                    showCalorieDialog = false 
-                    tempCalories = entry.calories.toString() 
+                    showEditDialog = null
                 }) {
                     Text("Cancel")
                 }
@@ -130,9 +147,8 @@ fun FoodDetailScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { 
-                        tempCalories = entry.calories.toString()
-                        showCalorieDialog = true 
+                    .clickable {
+                        showEditDialog = EditField.CALORIES
                     },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
@@ -152,25 +168,43 @@ fun FoodDetailScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     DetailRow("Amount", entry.amount)
-                    DetailRow("Protein", "${entry.protein}g")
-                    DetailRow("Carbs", "${entry.carbs}g")
-                    DetailRow("Fats", "${entry.fats}g")
+                    DetailRow("Protein", "${entry.protein}g", onEdit = { showEditDialog = EditField.PROTEIN })
+                    DetailRow("Carbs", "${entry.carbs}g", onEdit = { showEditDialog = EditField.CARBS })
+                    DetailRow("Fats", "${entry.fats}g", onEdit = { showEditDialog = EditField.FATS })
                 }
             }
         }
     }
 }
 
+enum class EditField(val label: String, val unit: String) {
+    CALORIES("Calories", "kcal"),
+    PROTEIN("Protein", "g"),
+    CARBS("Carbs", "g"),
+    FATS("Fats", "g")
+}
+
 @Composable
-fun DetailRow(label: String, value: String) {
+fun DetailRow(label: String, value: String, onEdit: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(enabled = onEdit != null) { onEdit?.invoke() }
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
-        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            if (onEdit != null) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_settings),
+                    contentDescription = "Edit $label",
+                    modifier = Modifier.padding(start = 8.dp).height(16.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                )
+            }
+        }
     }
 }
