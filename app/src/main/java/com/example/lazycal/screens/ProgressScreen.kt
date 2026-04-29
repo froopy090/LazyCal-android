@@ -89,6 +89,32 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
         }
     }
 
+    val (weeklyTotal, weeklyGoal) = remember(summaries, userConfig, entries, locale) {
+        val df = SimpleDateFormat("yyyy-MM-dd", locale)
+        val summaryMap = summaries.associateBy { it.dayId }
+        val calendar = Calendar.getInstance()
+        val todayStr = df.format(calendar.time)
+        
+        calendar.firstDayOfWeek = Calendar.SUNDAY
+        calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+        if (calendar.timeInMillis > System.currentTimeMillis()) {
+            calendar.add(Calendar.WEEK_OF_YEAR, -1)
+        }
+
+        var total = 0
+        (0..6).forEach {
+            val dateStr = df.format(calendar.time)
+            val dayCalories = if (dateStr == todayStr) {
+                entries.sumOf { it.calories }
+            } else {
+                summaryMap[dateStr]?.totalCalories ?: 0
+            }
+            total += dayCalories
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        total to (userConfig.dailyCalorieGoal * 7)
+    }
+
     val cardColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
 
     Column(
@@ -123,7 +149,14 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             )
         }
 
-        // 2. Calorie Trend Line Chart
+        // 2. Weekly Total Card
+        WeeklyTotalCard(
+            total = weeklyTotal,
+            goal = weeklyGoal,
+            backgroundColor = cardColor
+        )
+
+        // 3. Calorie Trend Line Chart
         CalorieTrendCard(
             summaries = summaries,
             goal = userConfig.dailyCalorieGoal,
@@ -261,6 +294,79 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, weekSuccess: List<Boolea
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeeklyTotalCard(total: Int, goal: Int, backgroundColor: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text(
+                text = "Weekly Calories",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = total.toString(),
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = " / $goal",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "kcal",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Optional progress bar
+            val progress = (total.toFloat() / goal.toFloat()).coerceIn(0f, 1.2f)
+            val barColor = if (total > goal) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.coerceAtMost(1f))
+                        .fillMaxSize()
+                        .background(barColor)
+                )
+            }
+            
+            if (total > goal) {
+                Text(
+                    text = "Weekly goal exceeded",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
     }
