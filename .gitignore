@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Ignore build artifacts and release folders
+/app/release/
+*.apk
+*.aab
+*.jks
