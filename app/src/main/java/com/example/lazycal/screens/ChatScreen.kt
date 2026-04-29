@@ -201,11 +201,11 @@ fun ChatScreen(viewModel: ChatViewModel) {
             val messages = remember {
                 listOf(
                     "Calculating your calories...",
-                    "AI is running locally on device, this may take a sec.",
+                    "AI is running locally on device, this may take a while.",
                     "Hint: Being specific with portions leads to better results.",
                     "Hint: If you already know the calories, just include them!",
                     "Did you know? Accuracy is highest when you specify weights.",
-                    "Tip: You can snap a photo to let the AI identify your food."
+                    "Tip: You can tap on the food entry to manually modify values."
                 )
             }
             var messageIndex by remember { mutableStateOf(0) }
