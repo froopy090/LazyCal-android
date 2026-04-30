@@ -49,6 +49,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -125,6 +131,10 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val scrollState = rememberScrollState()
+
     val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
     val imageUri = remember {
         FileProvider.getUriForFile(context, "${context.packageName}.provider", tempFile)
@@ -168,118 +178,169 @@ fun ChatScreen(viewModel: ChatViewModel) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        WeeklyTracker(
-            weeklySummaries = weeklySummaries,
-            calorieGoal = userConfig.dailyCalorieGoal,
-            selectedDayId = selectedDay,
-            onDayClick = { viewModel.selectDay(it) }
-        )
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val maxHeight = this.maxHeight
+        val maxWidth = this.maxWidth
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            if (isLandscape) {
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Left Side: Summaries
+                    Column(
+                        modifier = Modifier
+                            .width(maxWidth * 0.4f)
+                            .verticalScroll(scrollState)
+                    ) {
+                        WeeklyTracker(
+                            weeklySummaries = weeklySummaries,
+                            calorieGoal = userConfig.dailyCalorieGoal,
+                            selectedDayId = selectedDay,
+                            onDayClick = { viewModel.selectDay(it) }
+                        )
 
-        CalorieSummaryCard(
-            dailyTotal = dailyTotal,
-            calorieGoal = userConfig.dailyCalorieGoal
-        )
+                        Spacer(modifier = Modifier.height(24.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
+                        CalorieSummaryCard(
+                            dailyTotal = dailyTotal,
+                            calorieGoal = userConfig.dailyCalorieGoal
+                        )
+                    }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(entries, key = { it.id }) { entry ->
-                FoodEntryItem(
-                    entry = entry,
-                    onDelete = { viewModel.deleteEntry(entry) },
-                    onClick = { viewModel.showDetail(entry) },
-                    isReadOnly = isReadOnly
-                )
-            }
-        }
-        if (isProcessing) {
-            val messages = remember {
-                listOf(
-                    "Calculating your calories...",
-                    "AI is running locally on device, this may take a while.",
-                    "Hint: Being specific with portions leads to better results.",
-                    "Hint: If you already know the calories, just include them!",
-                    "Did you know? Accuracy is highest when you specify weights.",
-                    "Tip: You can tap on the food entry to manually modify values."
-                )
-            }
-            var messageIndex by remember { mutableStateOf(0) }
-            LaunchedEffect(Unit) {
-                while (true) {
-                    delay(2500)
-                    messageIndex = (messageIndex + 1) % messages.size
-                }
-            }
-            Text(
-                text = messages[messageIndex],
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                textAlign = TextAlign.Center
-            )
-        }
-        if (!isReadOnly) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("What did you eat?") },
-                    enabled = !isProcessing,
-                    singleLine = true
-                )
-                IconButton(
-                    onClick = {
-                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                            cameraLauncher.launch(imageUri)
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                    // Right Side: Food Entries
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(entries, key = { it.id }) { entry ->
+                            FoodEntryItem(
+                                entry = entry,
+                                onDelete = { viewModel.deleteEntry(entry) },
+                                onClick = { viewModel.showDetail(entry) },
+                                isReadOnly = isReadOnly
+                            )
                         }
-                    },
-                    enabled = !isProcessing
+                    }
+                }
+            } else {
+                // Portrait Layout
+                WeeklyTracker(
+                    weeklySummaries = weeklySummaries,
+                    calorieGoal = userConfig.dailyCalorieGoal,
+                    selectedDayId = selectedDay,
+                    onDayClick = { viewModel.selectDay(it) }
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                CalorieSummaryCard(
+                    dailyTotal = dailyTotal,
+                    calorieGoal = userConfig.dailyCalorieGoal
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoCamera,
-                        contentDescription = "Camera"
+                    items(entries, key = { it.id }) { entry ->
+                        FoodEntryItem(
+                            entry = entry,
+                            onDelete = { viewModel.deleteEntry(entry) },
+                            onClick = { viewModel.showDetail(entry) },
+                            isReadOnly = isReadOnly
+                        )
+                    }
+                }
+            }
+
+            if (isProcessing) {
+                val messages = remember {
+                    listOf(
+                        "Calculating your calories...",
+                        "AI is running locally on device, this may take a while.",
+                        "Hint: Being specific with portions leads to better results.",
+                        "Hint: If you already know the calories, just include them!",
+                        "Did you know? Accuracy is highest when you specify weights.",
+                        "Tip: You can tap on the food entry to manually modify values."
                     )
                 }
-                IconButton(
-                    onClick = { galleryLauncher.launch("image/*") },
-                    enabled = !isProcessing
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = "Gallery"
-                    )
+                var messageIndex by remember { mutableStateOf(0) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        delay(2500)
+                        messageIndex = (messageIndex + 1) % messages.size
+                    }
                 }
-                IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank()) {
-                            viewModel.sendMessage(inputText)
-                            inputText = ""
-                        }
-                    },
-                    enabled = !isProcessing
+                Text(
+                    text = messages[messageIndex],
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
+            if (!isReadOnly) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_send),
-                        contentDescription = "Send"
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("What did you eat?") },
+                        enabled = !isProcessing,
+                        singleLine = true
                     )
+                    IconButton(
+                        onClick = {
+                            val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                cameraLauncher.launch(imageUri)
+                            } else {
+                                permissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        },
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = "Camera"
+                        )
+                    }
+                    IconButton(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = "Gallery"
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            if (inputText.isNotBlank()) {
+                                viewModel.sendMessage(inputText)
+                                inputText = ""
+                            }
+                        },
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_send),
+                            contentDescription = "Send"
+                        )
+                    }
                 }
             }
         }
