@@ -293,6 +293,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
 
+    private fun isPromptSafe(text: String): Boolean {
+        val suspiciousKeywords = listOf(
+            "ignore", "forget", "system instruction", "jailbreak", "bypass", "override",
+            "as a developer", "do not follow", "stop being", "you are now"
+        )
+        val normalizedText = text.lowercase()
+        return suspiciousKeywords.none { normalizedText.contains(it) }
+    }
+
     fun sendImage(imagePath: String) {
         if (_selectedDay.value != todayId || _isProcessing.value) return
 
@@ -379,6 +388,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(text: String) {
         if (_selectedDay.value != todayId || _isProcessing.value) return
+
+        if (!isPromptSafe(text)) {
+            _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
+            return
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
             _isProcessing.value = true
@@ -475,13 +489,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (json.has("error")) return@withContext false
         
         return@withContext try {
+            val calories = json.getInt("calories")
+            val protein = json.optInt("protein", 0)
+            val carbs = json.optInt("carbs", 0)
+            val fats = json.optInt("fats", 0)
+
+            // Guardrails: No negative values and sane limits
+            if (calories < 0 || protein < 0 || carbs < 0 || fats < 0) {
+                Log.w("ChatViewModel", "Refusing to save entry with negative values: $json")
+                return@withContext false
+            }
+            if (calories > 10000) {
+                Log.w("ChatViewModel", "Refusing to save entry with excessive calories: $calories")
+                return@withContext false
+            }
+
             val entry = FoodEntry(
                 foodName = json.getString("food_item"),
                 amount = json.getString("amount"),
-                calories = json.getInt("calories"),
-                protein = json.optInt("protein", 0),
-                carbs = json.optInt("carbs", 0),
-                fats = json.optInt("fats", 0),
+                calories = calories,
+                protein = protein,
+                carbs = carbs,
+                fats = fats,
                 dayId = todayId,
                 originalInput = originalInput
             )
@@ -528,6 +557,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun getExportCSV(): String = csvManager.getExportCSV()
 
     suspend fun importFromCSV(csvData: String): Boolean = csvManager.importFromCSV(csvData)
+
+    fun resetEngine() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                conversation?.close()
+                engine?.close()
+                conversation = null
+                engine = null
+                cachedConversation = null
+                cachedEngine = null
+                initializationJob?.cancel()
+                initializationJob = null
+                
+                withContext(Dispatchers.Main) {
+                    _inputErrorMessage.value = "AI Engine Reset successfully."
+                }
+                ensureEngineInitialized()
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Reset engine failed", e)
+            }
+        }
+    }
 
     override fun onCleared() {
         super.onCleared()

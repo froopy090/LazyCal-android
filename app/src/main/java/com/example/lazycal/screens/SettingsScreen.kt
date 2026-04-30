@@ -57,6 +57,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     
     var showBackupPrompt by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -168,6 +169,29 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
         )
     }
 
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Reset AI Engine?") },
+            text = { Text("This will restart the AI engine and clear the current conversation history. This can help if the AI is behaving unexpectedly.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.resetEngine()
+                        showResetDialog = false
+                    }
+                ) {
+                    Text("Reset Engine")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -255,6 +279,16 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             }
             
             Spacer(modifier = Modifier.weight(1f))
+            Text("Troubleshooting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = { showResetDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+            ) {
+                Text("Reset AI Engine")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
             Text("Danger Zone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Button(onClick = { showBackupPrompt = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
         }
