@@ -1,6 +1,9 @@
 package com.example.lazycal.screens
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
+import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +49,8 @@ fun FoodDetailScreen(
     viewModel: ChatViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    var showDatePicker by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf<EditField?>(null) }
     var tempValue by remember(entry, showEditDialog) {
         mutableStateOf(
@@ -105,6 +110,30 @@ fun FoodDetailScreen(
                 }
             }
         )
+    }
+
+    if (showDatePicker) {
+        val calendar = java.util.Calendar.getInstance()
+        val parts = entry.dayId.split("-")
+        if (parts.size == 3) {
+            calendar.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+        }
+        
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newDayId = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                viewModel.updateEntry(entry.copy(dayId = newDayId))
+                showDatePicker = false
+            },
+            calendar.get(java.util.Calendar.YEAR),
+            calendar.get(java.util.Calendar.MONTH),
+            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+        ).apply {
+            setOnDismissListener { showDatePicker = false }
+            show()
+        }
+        showDatePicker = false // Reset after showing
     }
 
     Scaffold(
@@ -167,6 +196,7 @@ fun FoodDetailScreen(
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    DetailRow("Date", entry.dayId, onEdit = { showDatePicker = true })
                     DetailRow("Amount", entry.amount)
                     DetailRow("Protein", "${entry.protein}g", onEdit = { showEditDialog = EditField.PROTEIN })
                     DetailRow("Carbs", "${entry.carbs}g", onEdit = { showEditDialog = EditField.CARBS })

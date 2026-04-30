@@ -66,7 +66,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 @Composable
 fun WelcomeScreen(onDownloadClick: () -> Unit) {
@@ -292,12 +294,14 @@ fun WeeklyTracker(
     onDayClick: (String) -> Unit
 ) {
     val days = remember { listOf("S", "M", "T", "W", "T", "F", "S") }
+    val todayId = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date()) }
     
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         weeklySummaries.forEachIndexed { index, summary ->
+            val isFuture = summary.dayId > todayId
             val dayOfMonth = remember(summary.dayId) {
                 val calendar = Calendar.getInstance()
                 val parts = summary.dayId.split("-")
@@ -319,8 +323,15 @@ fun WeeklyTracker(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(40.dp)
                 ) {
-                    val progress = (summary.totalCalories.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1f)
-                    val color = if (summary.totalCalories > calorieGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
+                    val progress = remember(summary.totalCalories, calorieGoal, isFuture) {
+                        when {
+                            isFuture -> 0f
+                            calorieGoal <= 0 -> if (summary.totalCalories > 0) 1f else 0f
+                            else -> (summary.totalCalories.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1f)
+                        }
+                    }
+                    val isOverGoal = summary.totalCalories > calorieGoal
+                    val color = if (isOverGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
                     
                     Canvas(modifier = Modifier.size(36.dp)) {
                         drawArc(
