@@ -8,6 +8,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -55,7 +58,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val foodDao = db.foodDao()
     private val userConfigDao = db.userConfigDao()
     private val csvManager = CsvManager(foodDao)
-    
+
+    private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    private val _isOnline = MutableStateFlow(checkInitialOnline())
+    val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            _isOnline.value = true
+        }
+
+        override fun onLost(network: Network) {
+            _isOnline.value = false
+        }
+    }
+
+    private fun checkInitialOnline(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
     private val _uiState = MutableStateFlow<ChatState>(ChatState.CheckingModel)
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
 
@@ -147,6 +171,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         checkModel()
+        connectivityManager.registerDefaultNetworkCallback(networkCallback)
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(
             application,
@@ -191,10 +216,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startDownload() {
+        if (_uiState.value == ChatState.Downloading || _uiState.value == ChatState.Ready) return
+
+        if (!_isOnline.value) {
+            _inputErrorMessage.value = "No internet connection. Please connect and try again."
+            return
+        }
         _uiState.value = ChatState.Downloading
-        downloadId = modelManager.downloadModel()
-        if (downloadId == -1L) {
-            _uiState.value = ChatState.Error("Failed to start download")
+        val newId = modelManager.downloadModel()
+        if (newId == -1L) {
+            // If it returned -1, check if it's because the file is already there
+            if (modelManager.isModelDownloaded()) {
+                _uiState.value = ChatState.Ready
+            } else {
+                _uiState.value = ChatState.Error("Failed to start download")
+            }
+        } else {
+            downloadId = newId
         }
     }
 
@@ -582,6 +620,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        try {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        } catch (e: Exception) {
+            // Callback might not be registered
+        }
         try {
             getApplication<Application>().unregisterReceiver(downloadReceiver)
         } catch (e: Exception) {

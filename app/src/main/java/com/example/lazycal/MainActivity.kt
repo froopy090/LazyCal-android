@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity() {
                 val uiState by chatViewModel.uiState.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
                 val inputErrorMessage by chatViewModel.inputErrorMessage.collectAsState()
+                val isOnline by chatViewModel.isOnline.collectAsState()
                 
                 val tabs = remember { TabItem.entries }
                 val pagerState = rememberPagerState(pageCount = { tabs.size })
@@ -173,7 +174,7 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                                 when (uiState) {
                                 ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                                ChatState.ModelMissing -> WelcomeScreen(onDownloadClick = { chatViewModel.startDownload() })
+                                ChatState.ModelMissing -> WelcomeScreen(isOnline = isOnline, onDownloadClick = { chatViewModel.startDownload() })
                                 ChatState.Downloading -> DownloadingScreen()
                                 ChatState.Ready -> {
                                     HorizontalPager(

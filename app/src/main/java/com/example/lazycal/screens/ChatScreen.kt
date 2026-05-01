@@ -77,7 +77,7 @@ import java.util.Calendar
 import java.util.Locale
 
 @Composable
-fun WelcomeScreen(onDownloadClick: () -> Unit) {
+fun WelcomeScreen(isOnline: Boolean, onDownloadClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -93,8 +93,17 @@ fun WelcomeScreen(onDownloadClick: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
         Text("AI-powered local calorie tracking.")
         Spacer(modifier = Modifier.height(32.dp))
-        Button(onClick = onDownloadClick) {
+        Button(onClick = onDownloadClick, enabled = isOnline) {
             Text("Download AI Model (Gemma4)")
+        }
+        if (!isOnline) {
+            Text(
+                "No internet connection. Please connect to download the model.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp),
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
