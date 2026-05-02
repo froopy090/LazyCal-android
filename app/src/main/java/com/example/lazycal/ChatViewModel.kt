@@ -309,7 +309,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 cachedEngine = engineInstance
                 cachedConversation = conversationInstance
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "Engine init failed", e)
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
                 }
@@ -371,8 +370,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         } else {
                             imagePath
                         }
-                    } catch (e: Exception) {
-                        Log.e("ChatViewModel", "Image preprocessing failed", e)
+                    } catch (_: Exception) {
                         imagePath
                     }
                 }
@@ -386,7 +384,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
 
                 if (flow == null) {
-                    Log.e("ChatViewModel", "Conversation is null or flow is null")
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Conversation not initialized. Please restart the app."
                     }
@@ -394,7 +391,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 flow.catch { e ->
-                    Log.e("ChatViewModel", "Inference stream error", e)
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Inference error: ${e.message}"
                     }
@@ -407,7 +403,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val finalResponse = fullResponse.toString()
-                Log.d("ChatViewModel", "Full response: $finalResponse")
                 if (finalResponse.isBlank()) {
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Empty response from AI. Try again."
@@ -416,7 +411,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     parseAndSave(finalResponse, "Image Analysis")
                 }
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "General error in sendImage", e)
                 withContext(Dispatchers.Main) {
                     _inputErrorMessage.value = "Error: ${e.message}"
                 }
@@ -445,7 +439,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val flow = conversation?.sendMessageAsync(text)
                 
                 if (flow == null) {
-                    Log.e("ChatViewModel", "Conversation is null or flow is null")
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Conversation not initialized. Please restart the app."
                     }
@@ -453,7 +446,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 flow.catch { e ->
-                    Log.e("ChatViewModel", "Inference stream error", e)
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Inference error: ${e.message}"
                     }
@@ -466,7 +458,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 val finalResponse = fullResponse.toString()
-                Log.d("ChatViewModel", "Full response: $finalResponse")
                 if (finalResponse.isBlank()) {
                     withContext(Dispatchers.Main) {
                         _inputErrorMessage.value = "Empty response from AI. Try again."
@@ -475,7 +466,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     parseAndSave(finalResponse, text)
                 }
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "General error in sendMessage", e)
                 withContext(Dispatchers.Main) {
                     _inputErrorMessage.value = "Error: ${e.message}"
                 }
@@ -519,8 +509,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e("ChatViewModel", "Parsing error. Raw string: $jsonString", e)
+        } catch (_: Exception) {
             showInputError("Failed to parse AI response. Please try again.")
         }
     }
@@ -536,11 +525,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             // Guardrails: No negative values and sane limits
             if (calories < 0 || protein < 0 || carbs < 0 || fats < 0) {
-                Log.w("ChatViewModel", "Refusing to save entry with negative values: $json")
+                // Log.w("ChatViewModel", "Refusing to save entry with negative values: $json")
                 return@withContext false
             }
             if (calories > 10000) {
-                Log.w("ChatViewModel", "Refusing to save entry with excessive calories: $calories")
+                // Log.w("ChatViewModel", "Refusing to save entry with excessive calories: $calories")
                 return@withContext false
             }
 
@@ -556,8 +545,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             )
             foodDao.insert(entry)
             true
-        } catch (e: Exception) {
-            Log.e("ChatViewModel", "Individual item parse error", e)
+        } catch (_: Exception) {
             false
         }
     }
@@ -614,8 +602,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _inputErrorMessage.value = "AI Engine Reset successfully."
                 }
                 ensureEngineInitialized()
-            } catch (e: Exception) {
-                Log.e("ChatViewModel", "Reset engine failed", e)
+            } catch (_: Exception) {
+                // Ignore reset failures
             }
         }
     }

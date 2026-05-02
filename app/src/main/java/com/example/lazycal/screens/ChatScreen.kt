@@ -3,7 +3,6 @@ package com.example.lazycal.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -180,8 +179,8 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         }
                     }
                     viewModel.sendImage(file.absolutePath)
-                } catch (e: Exception) {
-                    Log.e("ChatScreen", "Failed to load image from gallery", e)
+                } catch (_: Exception) {
+                    // Ignore gallery errors
                 }
             }
         }
