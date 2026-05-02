@@ -67,7 +67,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val chatViewModel: ChatViewModel = viewModel()
             val progressViewModel: ProgressViewModel = viewModel()
-            val userConfig by chatViewModel.userConfig.collectAsState()
+            val supportViewModel: SupportViewModel = viewModel()
+            val userConfig by supportViewModel.userConfig.collectAsState()
             
             val systemInDarkTheme = isSystemInDarkTheme()
             val darkTheme = remember(userConfig.themeMode, systemInDarkTheme) {
@@ -92,7 +93,7 @@ class MainActivity : ComponentActivity() {
 
                 val isReadOnly by chatViewModel.isReadOnly.collectAsState()
                 val detailEntry by chatViewModel.detailEntry.collectAsState()
-                val totalEntriesCount by chatViewModel.totalEntriesCount.collectAsState()
+                val totalEntriesCount by supportViewModel.totalEntriesCount.collectAsState()
                 val uriHandler = LocalUriHandler.current
 
                 val scope = rememberCoroutineScope()
@@ -110,14 +111,14 @@ class MainActivity : ComponentActivity() {
                         text = { Text("I hope this app is helping you reach your goals! I'm a solo developer, and your support is greatly appreciated.") },
                         confirmButton = {
                             Button(onClick = { 
-                                chatViewModel.dismissDonationPrompt()
+                                supportViewModel.dismissDonationPrompt()
                                 uriHandler.openUri("https://ko-fi.com/froopy070") 
                             }) {
                                 Text("Support my work")
                             }
                         },
                         dismissButton = {
-                            TextButton(onClick = { chatViewModel.dismissDonationPrompt() }) {
+                            TextButton(onClick = { supportViewModel.dismissDonationPrompt() }) {
                                 Text("Maybe later")
                             }
                         }
