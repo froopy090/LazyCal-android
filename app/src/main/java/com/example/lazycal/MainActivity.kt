@@ -186,10 +186,7 @@ class MainActivity : ComponentActivity() {
                                     ) { page ->
                                         when (tabs[page]) {
                                             TabItem.Tracker -> ChatScreen(chatViewModel)
-                                            TabItem.Progress -> ProgressScreen(
-                                                progressViewModel,
-                                                chatViewModel
-                                            )
+                                            TabItem.Progress -> ProgressScreen(progressViewModel)
                                             TabItem.History -> HistoryScreen(
                                                 chatViewModel,
                                                 onDaySelected = {

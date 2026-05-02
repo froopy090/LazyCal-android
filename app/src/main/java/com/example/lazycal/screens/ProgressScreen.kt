@@ -43,14 +43,13 @@ import com.example.lazycal.ui.theme.LazyCalTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.lazycal.ChatViewModel
 import com.example.lazycal.DaySummary
 import com.example.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
 @Composable
-fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
+fun ProgressScreen(viewModel: ProgressViewModel) {
     val streak by viewModel.currentStreak.collectAsState()
     val summaries by viewModel.daySummaries.collectAsState()
     val userConfig by viewModel.userConfig.collectAsState()
