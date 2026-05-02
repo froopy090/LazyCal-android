@@ -94,7 +94,7 @@ fun WelcomeScreen(isOnline: Boolean, onDownloadClick: () -> Unit) {
         Text("AI-powered local calorie tracking.")
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onDownloadClick, enabled = isOnline) {
-            Text("Download AI Model (Gemma4)")
+            Text("Download Gemma4 AI (2.58 GB)")
         }
         if (!isOnline) {
             Text(
