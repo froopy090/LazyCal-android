@@ -27,6 +27,8 @@
 - **Visual Progress:** Interactive charts to monitor your caloric and macro-nutrient intake over time.
 - **Daily Goals:** Set and track your daily calorie target.
 - **Dark Mode Support:** Seamlessly switches between light and dark themes.
+- **Export To CSV:** Export or backup your data as a csv file.
+- **Manual Logging:** AI made a mistake? Manually modify any food entries.
 
 ## Tech Stack
 
