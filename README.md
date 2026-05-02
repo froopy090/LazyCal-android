@@ -1,4 +1,4 @@
-<p>
+<p align="center">
   <img src="./art/lazycal_logo.png" width="128" alt="LazyCal Logo">
 </p>
 
