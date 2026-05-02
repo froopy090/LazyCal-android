@@ -1,4 +1,4 @@
-package com.example.lazycal
+package com.francescocanossi.lazycal
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

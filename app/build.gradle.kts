@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.lazycal"
+    namespace = "com.francescocanossi.lazycal"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.lazycal"
+        applicationId = "com.francescocanossi.lazycal"
         minSdk = 24
         targetSdk = 36
         versionCode = 2

@@ -1,4 +1,4 @@
-package com.example.lazycal.screens
+package com.francescocanossi.lazycal.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,8 +49,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.lazycal.ChatViewModel
-import com.example.lazycal.R
+import com.francescocanossi.lazycal.ChatViewModel
+import com.francescocanossi.lazycal.R
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

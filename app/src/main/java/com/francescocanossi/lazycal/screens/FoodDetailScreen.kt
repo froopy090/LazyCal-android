@@ -1,4 +1,4 @@
-package com.example.lazycal.screens
+package com.francescocanossi.lazycal.screens
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.clickable
@@ -38,9 +38,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.lazycal.ChatViewModel
-import com.example.lazycal.FoodEntry
-import com.example.lazycal.R
+import com.francescocanossi.lazycal.ChatViewModel
+import com.francescocanossi.lazycal.FoodEntry
+import com.francescocanossi.lazycal.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

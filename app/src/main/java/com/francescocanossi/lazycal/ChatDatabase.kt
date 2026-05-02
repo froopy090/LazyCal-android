@@ -1,4 +1,4 @@
-package com.example.lazycal
+package com.francescocanossi.lazycal
 
 import android.content.Context
 import androidx.room.Dao

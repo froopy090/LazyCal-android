@@ -1,4 +1,4 @@
-package com.example.lazycal
+package com.francescocanossi.lazycal
 
 import android.app.Application
 import android.app.DownloadManager
@@ -11,7 +11,6 @@ import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope

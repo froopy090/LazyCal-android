@@ -1,4 +1,4 @@
-package com.example.lazycal.screens
+package com.francescocanossi.lazycal.screens
 
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
@@ -39,12 +39,12 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalLocale
-import com.example.lazycal.ui.theme.LazyCalTheme
+import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.lazycal.DaySummary
-import com.example.lazycal.ProgressViewModel
+import com.francescocanossi.lazycal.DaySummary
+import com.francescocanossi.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
 

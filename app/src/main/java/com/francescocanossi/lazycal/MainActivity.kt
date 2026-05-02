@@ -1,4 +1,4 @@
-package com.example.lazycal
+package com.francescocanossi.lazycal
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,7 +9,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -44,14 +43,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.lazycal.screens.ChatScreen
-import com.example.lazycal.screens.DownloadingScreen
-import com.example.lazycal.screens.FoodDetailScreen
-import com.example.lazycal.screens.HistoryScreen
-import com.example.lazycal.screens.ProgressScreen
-import com.example.lazycal.screens.SettingsScreen
-import com.example.lazycal.screens.WelcomeScreen
-import com.example.lazycal.ui.theme.LazyCalTheme
+import com.francescocanossi.lazycal.screens.ChatScreen
+import com.francescocanossi.lazycal.screens.DownloadingScreen
+import com.francescocanossi.lazycal.screens.FoodDetailScreen
+import com.francescocanossi.lazycal.screens.HistoryScreen
+import com.francescocanossi.lazycal.screens.ProgressScreen
+import com.francescocanossi.lazycal.screens.SettingsScreen
+import com.francescocanossi.lazycal.screens.WelcomeScreen
+import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 
 enum class TabItem(val title: String, val iconRes: Int) {
     Tracker("Tracker", R.drawable.ic_tracker),

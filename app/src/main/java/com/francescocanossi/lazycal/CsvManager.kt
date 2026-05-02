@@ -1,4 +1,4 @@
-package com.example.lazycal
+package com.francescocanossi.lazycal
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

@@ -1,4 +1,4 @@
-package com.example.lazycal.screens
+package com.francescocanossi.lazycal.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,8 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.lazycal.ChatViewModel
-import com.example.lazycal.DaySummary
+import com.francescocanossi.lazycal.ChatViewModel
+import com.francescocanossi.lazycal.DaySummary
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale

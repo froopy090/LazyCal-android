@@ -1,4 +1,4 @@
-package com.example.lazycal.screens
+package com.francescocanossi.lazycal.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -61,11 +61,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.lazycal.ChatViewModel
-import com.example.lazycal.DaySummary
-import com.example.lazycal.FoodEntry
-import com.example.lazycal.R
-import com.example.lazycal.ui.theme.LazyCalTheme
+import com.francescocanossi.lazycal.ChatViewModel
+import com.francescocanossi.lazycal.DaySummary
+import com.francescocanossi.lazycal.FoodEntry
+import com.francescocanossi.lazycal.R
+import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

@@ -1,4 +1,4 @@
-package com.example.lazycal.ui.theme
+package com.francescocanossi.lazycal.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
