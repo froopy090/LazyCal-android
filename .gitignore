@@ -13,6 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+.idea/
+.kotlin/
 
 # Ignore build artifacts and release folders
 /app/release/
