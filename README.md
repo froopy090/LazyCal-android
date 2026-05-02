@@ -45,4 +45,4 @@
 3. Build and run the `:app` module.
 
 ---
-*Developed with ❤️ for health-conscious lazy people.*
+*Developed with ❤️.*
