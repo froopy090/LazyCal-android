@@ -34,7 +34,7 @@ The only external link within the app is a completely optional button that direc
 
 ## 4. Children’s Privacy
 
-LazyCal does not address anyone under the age of 13. I do not knowingly collect personally identifiable information from children. Since the app collects no personal data to begin with, no data from children is ever transmitted or stored.
+LazyCal does not address anyone under the age of 18. I do not knowingly collect personally identifiable information from children. Since the app collects no personal data to begin with, no data from children is ever transmitted or stored.
 
 ## 5. Changes to This Privacy Policy
 
