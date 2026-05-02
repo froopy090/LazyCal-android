@@ -54,33 +54,23 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
     val streak by viewModel.currentStreak.collectAsState()
     val summaries by viewModel.daySummaries.collectAsState()
     val userConfig by viewModel.userConfig.collectAsState()
-    val entries by chatViewModel.foodEntries.collectAsState()
 
     val locale = LocalLocale.current.platformLocale
-    val weekSuccess = remember(summaries, userConfig, entries, locale) {
+    val summaryMap = remember(summaries) { summaries.associateBy { it.dayId } }
+    val todayStr = remember(locale) { SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date()) }
+
+    val weekSuccess = remember(summaryMap, userConfig, locale) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
-        val summaryMap = summaries.associateBy { it.dayId }
         val calendar = Calendar.getInstance()
         
-        // Find today's date string for live comparison
-        val todayStr = df.format(calendar.time)
-        
-        // Move calendar to the Sunday of the current week
-        calendar.firstDayOfWeek = Calendar.SUNDAY
-        calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-        
-        // If set(SUNDAY) jumped forward to next week, move it back
-        if (calendar.timeInMillis > System.currentTimeMillis()) {
-            calendar.add(Calendar.WEEK_OF_YEAR, -1)
+        // Find Sunday of the current week
+        while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
         }
 
         (0..6).map {
             val dateStr = df.format(calendar.time)
-            val calories = if (dateStr == todayStr) {
-                entries.sumOf { it.calories }
-            } else {
-                summaryMap[dateStr]?.totalCalories ?: 0
-            }
+            val calories = summaryMap[dateStr]?.totalCalories ?: 0
             
             // Goal met if calories are > 0 and under/equal to goal
             val met = calories in 1..userConfig.dailyCalorieGoal
@@ -89,27 +79,18 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
         }
     }
 
-    val (weeklyTotal, weeklyGoal) = remember(summaries, userConfig, entries, locale) {
+    val (weeklyTotal, weeklyGoal) = remember(summaryMap, userConfig, locale) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
-        val summaryMap = summaries.associateBy { it.dayId }
         val calendar = Calendar.getInstance()
-        val todayStr = df.format(calendar.time)
         
-        calendar.firstDayOfWeek = Calendar.SUNDAY
-        calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-        if (calendar.timeInMillis > System.currentTimeMillis()) {
-            calendar.add(Calendar.WEEK_OF_YEAR, -1)
+        while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
         }
 
         var total = 0
         (0..6).forEach {
             val dateStr = df.format(calendar.time)
-            val dayCalories = if (dateStr == todayStr) {
-                entries.sumOf { it.calories }
-            } else {
-                summaryMap[dateStr]?.totalCalories ?: 0
-            }
-            total += dayCalories
+            total += summaryMap[dateStr]?.totalCalories ?: 0
             calendar.add(Calendar.DAY_OF_YEAR, 1)
         }
         total to (userConfig.dailyCalorieGoal * 7)
@@ -129,9 +110,10 @@ fun ProgressScreen(viewModel: ProgressViewModel, chatViewModel: ChatViewModel) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            val totalProtein = remember(entries) { entries.sumOf { it.protein } }
-            val totalCarbs = remember(entries) { entries.sumOf { it.carbs } }
-            val totalFats = remember(entries) { entries.sumOf { it.fats } }
+            val todaySummary = summaryMap[todayStr]
+            val totalProtein = todaySummary?.totalProtein ?: 0
+            val totalCarbs = todaySummary?.totalCarbs ?: 0
+            val totalFats = todaySummary?.totalFats ?: 0
             
             MacroCircleCard(
                 modifier = Modifier.weight(1.2f),
@@ -172,9 +154,9 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
     val macroColors = LazyCalTheme.colors
     
     val total = remember(protein, carbs, fats) { (protein + carbs + fats).toFloat().coerceAtLeast(0f) }
-    val pRatio = remember(protein, total) { protein / total }
-    val cRatio = remember(carbs, total) { carbs / total }
-    val fRatio = remember(fats, total) { fats / total }
+    val pRatio = remember(protein, total) { if (total > 0) protein / total else 0f }
+    val cRatio = remember(carbs, total) { if (total > 0) carbs / total else 0f }
+    val fRatio = remember(fats, total) { if (total > 0) fats / total else 0f }
 
     Card(
         modifier = modifier.height(200.dp),
@@ -194,55 +176,55 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeWidth = 10.dp.toPx()
-                    val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
-                    val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
-                    
-                    drawArc(
-                        color = macroColors.protein,
-                        startAngle = -90f,
-                        sweepAngle = 360f * pRatio,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(strokeWidth)
-                    )
-                    drawArc(
-                        color = macroColors.carbs,
-                        startAngle = -90f + (360f * pRatio),
-                        sweepAngle = 360f * cRatio,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(strokeWidth)
-                    )
-                    drawArc(
-                        color = macroColors.fats,
-                        startAngle = -90f + (360f * (pRatio + cRatio)),
-                        sweepAngle = 360f * fRatio,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(strokeWidth)
-                    )
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = 10.dp.toPx()
+                        val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+                        val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                        
+                        drawArc(
+                            color = macroColors.protein,
+                            startAngle = -90f,
+                            sweepAngle = 360f * pRatio,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(strokeWidth)
+                        )
+                        drawArc(
+                            color = macroColors.carbs,
+                            startAngle = -90f + (360f * pRatio),
+                            sweepAngle = 360f * cRatio,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(strokeWidth)
+                        )
+                        drawArc(
+                            color = macroColors.fats,
+                            startAngle = -90f + (360f * (pRatio + cRatio)),
+                            sweepAngle = 360f * fRatio,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(strokeWidth)
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${total.toInt()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("total g", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${total.toInt()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("total g", style = MaterialTheme.typography.labelSmall)
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MacroLegendItem(macroColors.protein, "Protein", "${protein}g")
+                    MacroLegendItem(macroColors.carbs, "Carbs", "${carbs}g")
+                    MacroLegendItem(macroColors.fats, "Fats", "${fats}g")
                 }
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MacroLegendItem(macroColors.protein, "Protein", "${protein}g")
-                MacroLegendItem(macroColors.carbs, "Carbs", "${carbs}g")
-                MacroLegendItem(macroColors.fats, "Fats", "${fats}g")
             }
         }
     }
-}
 }
 
 @Composable
