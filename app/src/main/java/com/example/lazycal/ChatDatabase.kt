@@ -31,7 +31,9 @@ data class FoodEntry(
 data class UserConfig(
     @PrimaryKey val id: Int = 0, // Single row configuration
     val dailyCalorieGoal: Int = 2000,
-    val themeMode: String = "auto" // "auto", "light", "dark"
+    val themeMode: String = "auto", // "auto", "light", "dark"
+    val launchCount: Int = 0,
+    val hasDonatedOrDismissed: Boolean = false
 )
 
 data class DaySummary(
@@ -56,6 +58,9 @@ interface FoodDao {
     @Query("SELECT DISTINCT dayId FROM food_entries ORDER BY dayId DESC")
     fun getAllDays(): Flow<List<String>>
 
+    @Query("SELECT COUNT(*) FROM food_entries")
+    fun getTotalEntriesCount(): Flow<Int>
+
     @Query("SELECT * FROM food_entries ORDER BY timestamp DESC")
     suspend fun getAllEntries(): List<FoodEntry>
 
@@ -77,11 +82,14 @@ interface UserConfigDao {
     @Query("SELECT * FROM user_config WHERE id = 0")
     fun getUserConfig(): Flow<UserConfig?>
 
+    @Query("SELECT * FROM user_config WHERE id = 0")
+    suspend fun getUserConfigSync(): UserConfig?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveUserConfig(config: UserConfig)
 }
 
-@Database(entities = [FoodEntry::class, UserConfig::class], version = 6, exportSchema = false)
+@Database(entities = [FoodEntry::class, UserConfig::class], version = 7, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun foodDao(): FoodDao
     abstract fun userConfigDao(): UserConfigDao

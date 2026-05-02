@@ -95,6 +95,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val archivedDays: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val totalEntriesCount: StateFlow<Int> = foodDao.getTotalEntriesCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val weeklySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .map { summaries ->
             val summaryMap = summaries.associateBy { it.dayId }
@@ -172,6 +175,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         checkModel()
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
+        
+        // Increment launch count
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            userConfigDao.saveUserConfig(current.copy(launchCount = current.launchCount + 1))
+        }
+
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(
             application,
@@ -203,7 +213,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveUserConfig(goal: Int, themeMode: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            userConfigDao.saveUserConfig(UserConfig(dailyCalorieGoal = goal, themeMode = themeMode))
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            userConfigDao.saveUserConfig(current.copy(dailyCalorieGoal = goal, themeMode = themeMode))
+        }
+    }
+
+    fun dismissDonationPrompt() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            userConfigDao.saveUserConfig(current.copy(hasDonatedOrDismissed = true))
         }
     }
 

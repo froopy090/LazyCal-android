@@ -8,12 +8,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,6 +39,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,8 +92,37 @@ class MainActivity : ComponentActivity() {
 
                 val isReadOnly by chatViewModel.isReadOnly.collectAsState()
                 val detailEntry by chatViewModel.detailEntry.collectAsState()
+                val totalEntriesCount by chatViewModel.totalEntriesCount.collectAsState()
+                val uriHandler = LocalUriHandler.current
 
                 val scope = rememberCoroutineScope()
+
+                val shouldShowSupportPrompt = remember(userConfig, totalEntriesCount) {
+                    !userConfig.hasDonatedOrDismissed && 
+                    userConfig.launchCount >= 10 && 
+                    totalEntriesCount >= 20
+                }
+
+                if (shouldShowSupportPrompt) {
+                    AlertDialog(
+                        onDismissRequest = { /* Don't dismiss on outside tap to ensure decision */ },
+                        title = { Text("Enjoying LazyCal?") },
+                        text = { Text("I hope this app is helping you reach your goals! I'm a solo developer, and your support is greatly appreciated.") },
+                        confirmButton = {
+                            Button(onClick = { 
+                                chatViewModel.dismissDonationPrompt()
+                                uriHandler.openUri("https://ko-fi.com/froopy070") 
+                            }) {
+                                Text("Support my work")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { chatViewModel.dismissDonationPrompt() }) {
+                                Text("Maybe later")
+                            }
+                        }
+                    )
+                }
 
                 BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly || detailEntry != null) {
                     if (detailEntry != null) {
