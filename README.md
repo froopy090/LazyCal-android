@@ -61,5 +61,8 @@ pull request thoroughly. Once all changes in `dev` have been verified and accept
 2. Open the project in **Android Studio**.
 3. Build and run the `:app` module.
 
+## Additional Information
+- [Privacy Policy](./docs/PRIVACY.md)
+- [Terms of Use](./docs/TERMS.md)
 ---
 *Developed with <3*
