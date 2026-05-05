@@ -56,9 +56,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val db = ChatDatabase.getDatabase(application)
     private val foodDao = db.foodDao()
     private val userConfigDao = db.userConfigDao()
-    private val csvManager = CsvManager(foodDao)
+    private val weightDao = db.weightDao()
+    private val csvManager = CsvManager(foodDao, weightDao)
 
     private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    fun addWeightEntry(weight: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val entry = WeightEntry(weight = weight, dayId = todayId)
+            weightDao.insert(entry)
+            
+            // Sync current weight based on full history
+            val history = weightDao.getAllWeightEntriesSync()
+            val mostRecent = history.sortedWith(
+                compareByDescending<WeightEntry> { it.dayId }
+                    .thenByDescending { it.timestamp }
+            ).firstOrNull()
+            
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            userConfigDao.saveUserConfig(current.copy(weight = mostRecent?.weight))
+        }
+    }
 
     private val _isOnline = MutableStateFlow(checkInitialOnline())
     val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
@@ -134,6 +152,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private var engine: Engine? = null
     private var conversation: Conversation? = null
+    private var isVisionEnabled: Boolean = false
 
     private val systemInstruction = """
         You are an expert nutritionist AI. Your task is to convert food descriptions into a JSON array of objects.
@@ -201,10 +220,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _detailEntry.value = null
     }
 
-    fun saveUserConfig(goal: Int, themeMode: String) {
+    fun saveUserConfig(
+        goal: Int,
+        themeMode: String,
+        age: Int? = null,
+        weight: Double? = null,
+        height: Double? = null,
+        gender: String? = null,
+        activityLevel: String? = "KEEP_OLD"
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             val current = userConfigDao.getUserConfigSync() ?: UserConfig()
-            userConfigDao.saveUserConfig(current.copy(dailyCalorieGoal = goal, themeMode = themeMode))
+            userConfigDao.saveUserConfig(
+                current.copy(
+                    dailyCalorieGoal = goal,
+                    themeMode = themeMode,
+                    age = age ?: current.age,
+                    weight = weight ?: current.weight,
+                    height = height ?: current.height,
+                    gender = gender ?: current.gender,
+                    activityLevel = if (activityLevel == "KEEP_OLD") current.activityLevel else activityLevel
+                )
+            )
         }
     }
 
@@ -289,13 +326,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // Ensure all initialization work is off-thread
                 // Keep the backend on CPU, app simply performs better this way
                 // TODO: check if device has an NPU, if yes, use that as the backend because it'll be way more efficient
-                val engineInstance = withContext(Dispatchers.IO) {
-                    val engineConfig = EngineConfig(
+                val (engineInstance, visionActive) = withContext(Dispatchers.IO) {
+                    val engineConfigWithVision = EngineConfig(
                         modelPath = modelManager.modelFile.absolutePath,
                         backend = Backend.CPU(),
                         visionBackend = Backend.CPU(),
                     )
-                    Engine(engineConfig).also { it.initialize() }
+                    try {
+                        Engine(engineConfigWithVision).also { it.initialize() } to true
+                    } catch (e: Exception) {
+                        if (e.message?.contains("one signature but got 3") == true) {
+                            // Fallback to text-only if vision encoder has multiple signatures
+                            val engineConfigTextOnly = EngineConfig(
+                                modelPath = modelManager.modelFile.absolutePath,
+                                backend = Backend.CPU()
+                            )
+                            Engine(engineConfigTextOnly).also { it.initialize() } to false
+                        } else {
+                            throw e
+                        }
+                    }
                 }
                 
                 val conversationConfig = ConversationConfig(
@@ -305,8 +355,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 
                 engine = engineInstance
                 conversation = conversationInstance
+                isVisionEnabled = visionActive
                 cachedEngine = engineInstance
                 cachedConversation = conversationInstance
+                cachedIsVisionEnabled = visionActive
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
@@ -325,6 +377,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private var cachedEngine: Engine? = null
         @Volatile
         private var cachedConversation: Conversation? = null
+        @Volatile
+        private var cachedIsVisionEnabled: Boolean = false
         private var initializationJob: Job? = null
     }
 
@@ -350,6 +404,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 ensureEngineInitialized()
                 if (conversation == null) return@launch
 
+                if (!isVisionEnabled) {
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Image analysis is unavailable with this model. Please use text input instead."
+                    }
+                    return@launch
+                }
+                
                 // Pre-process and resize image to target resolution (720x880) to reduce GPU preprocessing lag
                 val processedImagePath = withContext(Dispatchers.Default) {
                     try {

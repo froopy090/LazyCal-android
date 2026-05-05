@@ -55,7 +55,12 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
+fun SettingsScreen(
+    viewModel: ChatViewModel,
+    onBack: () -> Unit,
+    onNavigateToCalculator: () -> Unit,
+    onNavigateToProfile: () -> Unit
+) {
     val userConfig by viewModel.userConfig.collectAsState()
     
     var showGoalDialog by remember { mutableStateOf(false) }
@@ -114,7 +119,8 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                 TextButton(
                     onClick = {
                         val newGoal = tempGoal.toIntOrNull() ?: userConfig.dailyCalorieGoal
-                        viewModel.saveUserConfig(newGoal, userConfig.themeMode)
+                        // Manual goal override clears activity level
+                        viewModel.saveUserConfig(newGoal, userConfig.themeMode, activityLevel = null)
                         showGoalDialog = false
                     }
                 ) {
@@ -238,12 +244,58 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                     Column {
                         Text("Daily Calorie Goal", style = MaterialTheme.typography.bodyMedium)
                         Text("${userConfig.dailyCalorieGoal} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        userConfig.activityLevel?.let {
+                            Text("Activity: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                     Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                 }
             }
+
+            Button(
+                onClick = onNavigateToCalculator,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Calculate your needs")
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (userConfig.age != null || userConfig.weight != null || userConfig.height != null) {
+                Text("Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToProfile() },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            userConfig.age?.let { Text("Age: $it", style = MaterialTheme.typography.bodyMedium) }
+                            userConfig.gender?.let { Text("Gender: $it", style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            userConfig.weight?.let { Text("Weight: $it kg", style = MaterialTheme.typography.bodyMedium) }
+                            userConfig.height?.let { Text("Height: $it cm", style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Tap to edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            } else {
+                Text("Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = onNavigateToProfile,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Complete your profile")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             
             Text("Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             themeOptions.forEach { text ->

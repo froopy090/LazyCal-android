@@ -213,16 +213,17 @@ fun ChatScreen(viewModel: ChatViewModel) {
 
                         CalorieSummaryCard(
                             dailyTotal = dailyTotal,
-                            calorieGoal = userConfig.dailyCalorieGoal
+                            calorieGoal = userConfig.dailyCalorieGoal,
+                            activityLevel = userConfig.activityLevel
                         )
-                    }
+                        }
 
-                    // Right Side: Food Entries
-                    LazyColumn(
+                        // Right Side: Food Entries
+                        LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                        ) {
                         items(entries, key = { it.id }) { entry ->
                             FoodEntryItem(
                                 entry = entry,
@@ -231,24 +232,24 @@ fun ChatScreen(viewModel: ChatViewModel) {
                                 isReadOnly = isReadOnly
                             )
                         }
-                    }
-                }
-            } else {
-                // Portrait Layout
-                WeeklyTracker(
-                    weeklySummaries = weeklySummaries,
-                    calorieGoal = userConfig.dailyCalorieGoal,
-                    selectedDayId = selectedDay,
-                    onDayClick = { viewModel.selectDay(it) }
-                )
+                        }
+                        }
+                        } else {
+                        // Portrait Layout
+                        WeeklyTracker(
+                        weeklySummaries = weeklySummaries,
+                        calorieGoal = userConfig.dailyCalorieGoal,
+                        selectedDayId = selectedDay,
+                        onDayClick = { viewModel.selectDay(it) }
+                        )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
 
-                CalorieSummaryCard(
-                    dailyTotal = dailyTotal,
-                    calorieGoal = userConfig.dailyCalorieGoal
-                )
-
+                        CalorieSummaryCard(
+                        dailyTotal = dailyTotal,
+                        calorieGoal = userConfig.dailyCalorieGoal,
+                        activityLevel = userConfig.activityLevel
+                        )
                 Spacer(modifier = Modifier.height(16.dp))
 
                 LazyColumn(
@@ -440,7 +441,8 @@ fun WeeklyTracker(
 @Composable
 fun CalorieSummaryCard(
     dailyTotal: Int,
-    calorieGoal: Int
+    calorieGoal: Int,
+    activityLevel: String? = null
 ) {
     val isOver = dailyTotal > calorieGoal
     val diff = if (isOver) dailyTotal - calorieGoal else calorieGoal - dailyTotal
@@ -469,6 +471,14 @@ fun CalorieSummaryCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                activityLevel?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
 
             Box(contentAlignment = Alignment.Center) {

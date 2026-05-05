@@ -33,7 +33,12 @@ data class UserConfig(
     val dailyCalorieGoal: Int = 2000,
     val themeMode: String = "auto", // "auto", "light", "dark"
     val launchCount: Int = 0,
-    val hasDonatedOrDismissed: Boolean = false
+    val hasDonatedOrDismissed: Boolean = false,
+    val age: Int? = null,
+    val weight: Double? = null,
+    val height: Double? = null,
+    val gender: String? = null, // "Male", "Female"
+    val activityLevel: String? = null // label from ActivityLevel enum
 )
 
 data class DaySummary(
@@ -89,10 +94,40 @@ interface UserConfigDao {
     suspend fun saveUserConfig(config: UserConfig)
 }
 
-@Database(entities = [FoodEntry::class, UserConfig::class], version = 7, exportSchema = false)
+@Entity(tableName = "weight_history")
+data class WeightEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val weight: Double,
+    val timestamp: Long = System.currentTimeMillis(),
+    val dayId: String // Format: YYYY-MM-DD
+)
+
+@Dao
+interface WeightDao {
+    @Query("SELECT * FROM weight_history ORDER BY dayId ASC, timestamp ASC")
+    fun getAllWeightEntries(): Flow<List<WeightEntry>>
+
+    @Query("SELECT * FROM weight_history")
+    suspend fun getAllWeightEntriesSync(): List<WeightEntry>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entry: WeightEntry)
+
+    @androidx.room.Update
+    suspend fun update(entry: WeightEntry)
+
+    @Delete
+    suspend fun delete(entry: WeightEntry)
+
+    @Query("DELETE FROM weight_history")
+    suspend fun deleteAll()
+}
+
+@Database(entities = [FoodEntry::class, UserConfig::class, WeightEntry::class], version = 10, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun foodDao(): FoodDao
     abstract fun userConfigDao(): UserConfigDao
+    abstract fun weightDao(): WeightDao
 
     companion object {
         @Volatile

@@ -48,15 +48,234 @@ import com.francescocanossi.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.francescocanossi.lazycal.R
+import com.francescocanossi.lazycal.WeightEntry
+import java.util.Date
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(viewModel: ProgressViewModel) {
     val streak by viewModel.currentStreak.collectAsState()
     val summaries by viewModel.daySummaries.collectAsState()
     val userConfig by viewModel.userConfig.collectAsState()
+    val weightHistory by viewModel.weightHistory.collectAsState()
 
     val locale = LocalLocale.current.platformLocale
     val summaryMap = remember(summaries) { summaries.associateBy { it.dayId } }
     val todayStr = remember(locale) { SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date()) }
+
+    var weightToDelete by remember { mutableStateOf<WeightEntry?>(null) }
+    var weightToEdit by remember { mutableStateOf<WeightEntry?>(null) }
+    var editWeightValue by remember { mutableStateOf("") }
+    var editDateValue by remember { mutableStateOf("") }
+    
+    var showAddWeightDialog by remember { mutableStateOf(false) }
+    var newWeightValue by remember { mutableStateOf("") }
+    var newDateValue by remember { mutableStateOf(todayStr) }
+    
+    val datePickerState = rememberDatePickerState()
+    var showDatePicker by remember { mutableStateOf(false) }
+    var datePickerTarget by remember { mutableStateOf("edit") } // "edit" or "add"
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = Date(millis)
+                        val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+                        if (datePickerTarget == "edit") {
+                            editDateValue = formatted
+                        } else {
+                            newDateValue = formatted
+                        }
+                    }
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showAddWeightDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddWeightDialog = false },
+            title = { Text("Add new weight entry") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newWeightValue,
+                        onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) newWeightValue = it },
+                        label = { Text("Weight (kg)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = newDateValue,
+                            onValueChange = { },
+                            label = { Text("Date") },
+                            modifier = Modifier.fillMaxWidth(),
+                            readOnly = true,
+                            trailingIcon = {
+                                IconButton(onClick = { 
+                                    datePickerTarget = "add"
+                                    showDatePicker = true 
+                                }) {
+                                    Icon(painterResource(id = R.drawable.ic_history), contentDescription = "Select Date")
+                                }
+                            }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(Color.Transparent)
+                                .clickable { 
+                                    datePickerTarget = "add"
+                                    showDatePicker = true 
+                                }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val weight = newWeightValue.toDoubleOrNull()
+                        if (weight != null) {
+                            viewModel.addWeightEntry(weight, newDateValue)
+                        }
+                        showAddWeightDialog = false
+                        newWeightValue = ""
+                        newDateValue = todayStr
+                    }
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddWeightDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (weightToEdit != null) {
+        AlertDialog(
+            onDismissRequest = { weightToEdit = null },
+            title = { Text("Edit weight entry") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editWeightValue,
+                        onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) editWeightValue = it },
+                        label = { Text("Weight (kg)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = editDateValue,
+                            onValueChange = { },
+                            label = { Text("Date") },
+                            modifier = Modifier.fillMaxWidth(),
+                            readOnly = true,
+                            trailingIcon = {
+                                IconButton(onClick = { 
+                                    datePickerTarget = "edit"
+                                    showDatePicker = true 
+                                }) {
+                                    Icon(painterResource(id = R.drawable.ic_history), contentDescription = "Select Date")
+                                }
+                            }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(Color.Transparent)
+                                .clickable { 
+                                    datePickerTarget = "edit"
+                                    showDatePicker = true 
+                                }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val newWeight = editWeightValue.toDoubleOrNull()
+                        if (newWeight != null && editDateValue.isNotEmpty()) {
+                            weightToEdit?.let { 
+                                viewModel.updateWeightEntry(it.copy(weight = newWeight, dayId = editDateValue)) 
+                            }
+                        }
+                        weightToEdit = null
+                    }
+                ) {
+                    Text("Update")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { weightToEdit = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (weightToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { weightToDelete = null },
+            title = { Text("Delete weight entry?") },
+            text = { Text("This will permanently remove this weight record from your history.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        weightToDelete?.let { viewModel.deleteWeightEntry(it) }
+                        weightToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { weightToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     val weekSuccess = remember(summaryMap, userConfig, locale) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
@@ -143,8 +362,175 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             goal = userConfig.dailyCalorieGoal,
             backgroundColor = cardColor
         )
+
+        // 4. Weight History Section
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Weight Progress",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = { 
+                    newDateValue = todayStr
+                    showAddWeightDialog = true 
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_add),
+                        contentDescription = "Add weight",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            
+            if (weightHistory.size < 2) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardColor)
+                ) {
+                    Box(modifier = Modifier.padding(32.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Not enough data to show a chart. Add more weight entries in your Profile.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            } else {
+                WeightChartCard(weightHistory, cardColor)
+            }
+            
+            weightHistory.reversed().forEach { entry ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("${entry.weight} kg", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(entry.dayId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        }
+                        Row {
+                            IconButton(onClick = { 
+                                weightToEdit = entry 
+                                editWeightValue = entry.weight.toString()
+                                editDateValue = entry.dayId
+                            }) {
+                                Icon(
+                                    painterResource(id = R.drawable.ic_settings),
+                                    contentDescription = "Edit entry",
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            IconButton(onClick = { weightToDelete = entry }) {
+                                Icon(
+                                    painterResource(id = R.drawable.ic_delete),
+                                    contentDescription = "Delete entry",
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+fun WeightChartCard(history: List<WeightEntry>, backgroundColor: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text(
+                text = "Weight Trend",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            WeightLineChart(history)
+        }
+    }
+}
+
+@Composable
+fun WeightLineChart(history: List<WeightEntry>) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    
+    Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val minWeight = history.minOf { it.weight } - 2
+            val maxWeight = history.maxOf { it.weight } + 2
+            val weightRange = maxWeight - minWeight
+            
+            val width = size.width
+            val height = size.height
+            
+            val points = history.mapIndexed { index, entry ->
+                val x = if (history.size > 1) {
+                    (index.toFloat() / (history.size - 1)) * width
+                } else {
+                    width / 2
+                }
+                val y = height - ((entry.weight.toFloat() - minWeight.toFloat()) / weightRange.toFloat() * height)
+                Offset(x, y)
+            }
+            
+            // Draw path
+            val path = Path().apply {
+                if (points.isNotEmpty()) {
+                    moveTo(points[0].x, points[0].y)
+                    for (i in 1 until points.size) {
+                        lineTo(points[i].x, points[i].y)
+                    }
+                }
+            }
+            
+            drawPath(
+                path = path,
+                color = primaryColor,
+                style = Stroke(width = 3.dp.toPx())
+            )
+            
+            // Draw points
+            points.forEach { point ->
+                drawCircle(
+                    color = primaryColor,
+                    radius = 4.dp.toPx(),
+                    center = point
+                )
+            }
+
+            // Draw labels for min/max
+            drawContext.canvas.nativeCanvas.apply {
+                val paint = android.graphics.Paint().apply {
+                    color = onSurfaceColor.toArgb()
+                    textSize = 30f
+                }
+                drawText("${maxWeight.toInt()} kg", 0f, 30f, paint)
+                drawText("${minWeight.toInt()} kg", 0f, height, paint)
+            }
+        }
     }
 }
 

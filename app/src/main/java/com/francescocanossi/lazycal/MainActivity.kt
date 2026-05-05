@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
                 val currentTab = tabs[pagerState.currentPage]
                 
                 var showSettings by rememberSaveable { mutableStateOf(false) }
+                var showCalorieCalculator by rememberSaveable { mutableStateOf(false) }
+                var showProfile by rememberSaveable { mutableStateOf(false) }
 
                 val isReadOnly by chatViewModel.isReadOnly.collectAsState()
                 val detailEntry by chatViewModel.detailEntry.collectAsState()
@@ -124,9 +126,13 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                BackHandler(enabled = showSettings || currentTab != TabItem.Tracker || isReadOnly || detailEntry != null) {
+                BackHandler(enabled = showSettings || showCalorieCalculator || showProfile || currentTab != TabItem.Tracker || isReadOnly || detailEntry != null) {
                     if (detailEntry != null) {
                         chatViewModel.dismissDetail()
+                    } else if (showProfile) {
+                        showProfile = false
+                    } else if (showCalorieCalculator) {
+                        showCalorieCalculator = false
                     } else if (showSettings) {
                         showSettings = false
                     } else if (currentTab != TabItem.Tracker) {
@@ -150,8 +156,23 @@ class MainActivity : ComponentActivity() {
                         viewModel = chatViewModel,
                         onBack = { chatViewModel.dismissDetail() }
                     )
+                } else if (showProfile) {
+                    com.francescocanossi.lazycal.screens.ProfileScreen(
+                        viewModel = chatViewModel,
+                        onBack = { showProfile = false }
+                    )
+                } else if (showCalorieCalculator) {
+                    com.francescocanossi.lazycal.screens.CalorieCalculatorScreen(
+                        viewModel = chatViewModel,
+                        onBack = { showCalorieCalculator = false }
+                    )
                 } else if (showSettings) {
-                    SettingsScreen(viewModel = chatViewModel, onBack = { showSettings = false })
+                    SettingsScreen(
+                        viewModel = chatViewModel,
+                        onBack = { showSettings = false },
+                        onNavigateToCalculator = { showCalorieCalculator = true },
+                        onNavigateToProfile = { showProfile = true }
+                    )
                 } else {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
