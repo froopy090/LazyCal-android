@@ -354,39 +354,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // Ensure all initialization work is off-thread
                 // Keep the backend on CPU, app simply performs better this way
                 // TODO: check if device has an NPU, if yes, use that as the backend because it'll be way more efficient
-                val (engineInstance, visionActive) = withContext(Dispatchers.IO) {
-                    val engineConfigWithVision = EngineConfig(
+                val engineInstance = withContext(Dispatchers.IO) {
+                    val engineConfig = EngineConfig(
                         modelPath = modelManager.modelFile.absolutePath,
                         backend = Backend.CPU(),
                         visionBackend = Backend.CPU(),
                     )
-                    try {
-                        Engine(engineConfigWithVision).also { it.initialize() } to true
-                    } catch (e: Exception) {
-                        if (e.message?.contains("one signature but got 3") == true) {
-                            // Fallback to text-only if vision encoder has multiple signatures
-                            val engineConfigTextOnly = EngineConfig(
-                                modelPath = modelManager.modelFile.absolutePath,
-                                backend = Backend.CPU()
-                            )
-                            Engine(engineConfigTextOnly).also { it.initialize() } to false
-                        } else {
-                            throw e
-                        }
-                    }
+                    Engine(engineConfig).also { it.initialize() }
                 }
-                
+
                 val conversationConfig = ConversationConfig(
                     systemInstruction = Contents.of(systemInstruction)
                 )
                 val conversationInstance = engineInstance.createConversation(conversationConfig)
-                
+
                 engine = engineInstance
                 conversation = conversationInstance
-                isVisionEnabled = visionActive
+                isVisionEnabled = true
                 cachedEngine = engineInstance
                 cachedConversation = conversationInstance
-                cachedIsVisionEnabled = visionActive
+                cachedIsVisionEnabled = true
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
@@ -395,7 +382,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         initializationJob?.join()
     }
-
     private fun initializeEngine() {
         // No longer used for immediate initialization
     }

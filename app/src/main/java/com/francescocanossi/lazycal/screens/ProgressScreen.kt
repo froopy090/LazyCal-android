@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -94,6 +95,8 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
     
     var showAddWeightDialog by remember { mutableStateOf(false) }
     var showMacroDetail by remember { mutableStateOf(false) }
+    var selectedDate by remember { mutableStateOf(todayStr) }
+    var showMainDatePicker by remember { mutableStateOf(false) }
     var newWeightValue by remember { mutableStateOf("") }
     var newDateValue by remember { mutableStateOf(todayStr) }
     
@@ -102,13 +105,37 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
     var datePickerTarget by remember { mutableStateOf("edit") } // "edit" or "add"
 
     if (showMacroDetail) {
-        val todaySummary = summaryMap[todayStr]
+        val selectedSummary = summaryMap[selectedDate]
         MacroDetailDialog(
-            protein = todaySummary?.totalProtein ?: 0,
-            carbs = todaySummary?.totalCarbs ?: 0,
-            fats = todaySummary?.totalFats ?: 0,
+            protein = selectedSummary?.totalProtein ?: 0,
+            carbs = selectedSummary?.totalCarbs ?: 0,
+            fats = selectedSummary?.totalFats ?: 0,
             onDismiss = { showMacroDetail = false }
         )
+    }
+
+    if (showMainDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showMainDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = Date(millis)
+                        selectedDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+                    }
+                    showMainDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMainDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 
     if (showDatePicker) {
@@ -294,11 +321,15 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
         )
     }
 
-    val weekSuccess = remember(summaryMap, userConfig, locale) {
+    val weekSuccess = remember(summaryMap, userConfig, locale, selectedDate) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
         val calendar = Calendar.getInstance()
+        val dateParts = selectedDate.split("-")
+        if (dateParts.size == 3) {
+            calendar.set(dateParts[0].toInt(), dateParts[1].toInt() - 1, dateParts[2].toInt())
+        }
         
-        // Find Sunday of the current week
+        // Find Sunday of the selected week
         while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
             calendar.add(Calendar.DAY_OF_YEAR, -1)
         }
@@ -314,9 +345,13 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
         }
     }
 
-    val (weeklyTotal, weeklyGoal) = remember(summaryMap, userConfig, locale) {
+    val (weeklyTotal, weeklyGoal) = remember(summaryMap, userConfig, locale, selectedDate) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
         val calendar = Calendar.getInstance()
+        val dateParts = selectedDate.split("-")
+        if (dateParts.size == 3) {
+            calendar.set(dateParts[0].toInt(), dateParts[1].toInt() - 1, dateParts[2].toInt())
+        }
         
         while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
             calendar.add(Calendar.DAY_OF_YEAR, -1)
@@ -340,41 +375,126 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        // 1. Top Cards
-        val todaySummary = summaryMap[todayStr]
-        val totalProtein = todaySummary?.totalProtein ?: 0
-        val totalCarbs = todaySummary?.totalCarbs ?: 0
-        val totalFats = todaySummary?.totalFats ?: 0
+        // 0. Date Selector Card
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable { showMainDatePicker = true },
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Viewing Data for", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val displayDate = remember(selectedDate, locale) {
+                        try {
+                            val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDate)
+                            SimpleDateFormat("EEEE, d MMMM yyyy", locale).format(date)
+                        } catch (_: Exception) {
+                            selectedDate
+                        }
+                    }
+                    Text(displayDate, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (selectedDate != todayStr) {
+                        TextButton(onClick = { selectedDate = todayStr }) {
+                            Text("Today")
+                        }
+                    }
+                    IconButton(onClick = { showMainDatePicker = true }) {
+                        Icon(painterResource(id = R.drawable.ic_history), contentDescription = "Change Date", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+
+        // 1. Top Card: Macros for specific date
+        val selectedSummary = summaryMap[selectedDate]
+        val totalProtein = selectedSummary?.totalProtein ?: 0
+        val totalCarbs = selectedSummary?.totalCarbs ?: 0
+        val totalFats = selectedSummary?.totalFats ?: 0
+
+        val macroTitle = remember(selectedDate, locale, todayStr) {
+            try {
+                if (selectedDate == todayStr) {
+                    "Today's Macros"
+                } else {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    val date = sdf.parse(selectedDate)
+                    val calendar = Calendar.getInstance()
+                    calendar.add(Calendar.DAY_OF_YEAR, -1)
+                    val yesterdayStr = sdf.format(calendar.time)
+                    
+                    if (selectedDate == yesterdayStr) {
+                        "Yesterday's Macros"
+                    } else {
+                        val formatted = SimpleDateFormat("d MMMM", locale).format(date!!)
+                        "Macros for $formatted"
+                    }
+                }
+            } catch (_: Exception) {
+                "Daily Macros"
+            }
+        }
         
         MacroCircleCard(
             modifier = Modifier.fillMaxWidth(),
+            title = macroTitle,
             protein = totalProtein,
             carbs = totalCarbs,
             fats = totalFats,
             backgroundColor = cardColor,
             onClick = { showMacroDetail = true }
         )
-        
-        StreakProgressCard(
-            modifier = Modifier.fillMaxWidth(),
-            streak = streak,
-            weekSuccess = weekSuccess,
-            backgroundColor = cardColor
-        )
 
-        // 2. Weekly Total Card
-        WeeklyTotalCard(
-            total = weeklyTotal,
-            goal = weeklyGoal,
-            backgroundColor = cardColor
-        )
+        // 2. Weekly Section Group
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            val weekRangeTitle = remember(selectedDate, locale) {
+                val calendar = Calendar.getInstance()
+                val dateParts = selectedDate.split("-")
+                if (dateParts.size == 3) {
+                    calendar.set(dateParts[0].toInt(), dateParts[1].toInt() - 1, dateParts[2].toInt())
+                }
+                while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
+                    calendar.add(Calendar.DAY_OF_YEAR, -1)
+                }
+                val start = calendar.time
+                calendar.add(Calendar.DAY_OF_YEAR, 6)
+                val end = calendar.time
+                
+                val df = SimpleDateFormat("d MMM", locale)
+                "Week: ${df.format(start)} - ${df.format(end)}"
+            }
 
-        // 3. Calorie Trend Line Chart
-        CalorieTrendCard(
-            summaries = summaries,
-            goal = userConfig.dailyCalorieGoal,
-            backgroundColor = cardColor
-        )
+            Text(
+                text = weekRangeTitle,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            StreakProgressCard(
+                modifier = Modifier.fillMaxWidth(),
+                streak = streak,
+                weekSuccess = weekSuccess,
+                backgroundColor = cardColor
+            )
+
+            WeeklyTotalCard(
+                total = weeklyTotal,
+                goal = weeklyGoal,
+                backgroundColor = cardColor
+            )
+
+            CalorieTrendCard(
+                summaries = summaries,
+                goal = userConfig.dailyCalorieGoal,
+                backgroundColor = cardColor,
+                selectedDate = selectedDate
+            )
+        }
 
         // 4. Weight History Section
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -550,6 +670,7 @@ fun WeightLineChart(history: List<WeightEntry>) {
 @Composable
 fun MacroCircleCard(
     modifier: Modifier,
+    title: String,
     protein: Int,
     carbs: Int,
     fats: Int,
@@ -572,7 +693,7 @@ fun MacroCircleCard(
     ) {
         Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
             Text(
-                text = "Today's Macros",
+                text = title,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -764,7 +885,7 @@ fun WeeklyTotalCard(total: Int, goal: Int, backgroundColor: Color) {
 }
 
 @Composable
-fun CalorieTrendCard(summaries: List<DaySummary>, goal: Int, backgroundColor: Color) {
+fun CalorieTrendCard(summaries: List<DaySummary>, goal: Int, backgroundColor: Color, selectedDate: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -789,23 +910,27 @@ fun CalorieTrendCard(summaries: List<DaySummary>, goal: Int, backgroundColor: Co
             
             Spacer(modifier = Modifier.height(32.dp))
             
-            CalorieLineChart(summaries, goal)
+            CalorieLineChart(summaries, goal, selectedDate)
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
+fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: String) {
     val themeColors = LazyCalTheme.colors
     val locale = LocalLocale.current.platformLocale
     
-    val data = remember(summaries, locale) {
+    val data = remember(summaries, locale, selectedDate) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
         val dayFormat = SimpleDateFormat("E", locale)
         val summaryMap = summaries.associateBy { it.dayId }
         
         val calendar = Calendar.getInstance()
+        val dateParts = selectedDate.split("-")
+        if (dateParts.size == 3) {
+            calendar.set(dateParts[0].toInt(), dateParts[1].toInt() - 1, dateParts[2].toInt())
+        }
         calendar.add(Calendar.DAY_OF_YEAR, -6)
         
         (0..6).map {
