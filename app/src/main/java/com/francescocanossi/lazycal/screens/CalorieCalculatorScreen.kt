@@ -167,17 +167,6 @@ fun CalorieCalculatorScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         }
                         calculatedTDEE = (bmr * activityLevel.factor).toInt()
                         
-                        // Also save profile details
-                        viewModel.saveUserConfig(
-                            goal = userConfig.dailyCalorieGoal,
-                            themeMode = userConfig.themeMode,
-                            age = a,
-                            weight = w,
-                            height = h,
-                            gender = gender.label,
-                            activityLevel = activityLevel.label
-                        )
-
                         // Auto-scroll to show results
                         scope.launch {
                             kotlinx.coroutines.delay(100) // Small delay to let the result card appear
@@ -188,7 +177,7 @@ fun CalorieCalculatorScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 enabled = age.isNotEmpty() && weight.isNotEmpty() && height.isNotEmpty()
             ) {
-                Text("Calculate TDEE")
+                Text("Calculate Calorie")
             }
             
             calculatedTDEE?.let { tdee ->
@@ -202,15 +191,20 @@ fun CalorieCalculatorScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = {
+                                val newWeight = weight.toDoubleOrNull()
                                 viewModel.saveUserConfig(
                                     goal = tdee,
                                     themeMode = userConfig.themeMode,
                                     age = age.toIntOrNull(),
-                                    weight = weight.toDoubleOrNull(),
+                                    weight = newWeight,
                                     height = height.toDoubleOrNull(),
                                     gender = gender.label,
                                     activityLevel = activityLevel.label
                                 )
+                                // If weight changed, add to history
+                                if (newWeight != null && newWeight != userConfig.weight) {
+                                    viewModel.addWeightEntry(newWeight)
+                                }
                                 onBack()
                             },
                             modifier = Modifier.fillMaxWidth()

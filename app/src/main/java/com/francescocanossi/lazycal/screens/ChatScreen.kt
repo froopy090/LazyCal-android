@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
@@ -363,22 +365,39 @@ fun WeeklyTracker(
     selectedDayId: String,
     onDayClick: (String) -> Unit
 ) {
-    val days = remember { listOf("S", "M", "T", "W", "T", "F", "S") }
     val todayId = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date()) }
-    
-    Row(
+    val listState = rememberLazyListState()
+
+    // Scroll to today or selected day on first launch
+    LaunchedEffect(weeklySummaries) {
+        if (weeklySummaries.isNotEmpty()) {
+            val targetIndex = weeklySummaries.indexOfFirst { it.dayId == selectedDayId }.takeIf { it != -1 }
+                ?: weeklySummaries.indexOfFirst { it.dayId == todayId }.takeIf { it != -1 }
+                ?: (weeklySummaries.size - 1)
+            
+            listState.scrollToItem(targetIndex)
+        }
+    }
+
+    LazyRow(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp)
     ) {
-        weeklySummaries.forEachIndexed { index, summary ->
+        items(weeklySummaries, key = { it.dayId }) { summary ->
             val isFuture = summary.dayId > todayId
-            val dayOfMonth = remember(summary.dayId) {
-                val calendar = Calendar.getInstance()
-                val parts = summary.dayId.split("-")
-                if (parts.size == 3) {
-                    calendar.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+            val calendar = remember(summary.dayId) {
+                Calendar.getInstance().apply {
+                    val parts = summary.dayId.split("-")
+                    if (parts.size == 3) {
+                        set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+                    }
                 }
-                calendar.get(Calendar.DAY_OF_MONTH)
+            }
+            val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
+            val dayOfWeekLabel = remember(summary.dayId) {
+                SimpleDateFormat("E", Locale.getDefault()).format(calendar.time).first().toString().uppercase()
             }
             val isSelected = summary.dayId == selectedDayId
 
@@ -420,7 +439,7 @@ fun WeeklyTracker(
                         )
                     }
                     Text(
-                        text = days[index],
+                        text = dayOfWeekLabel,
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -446,7 +465,13 @@ fun CalorieSummaryCard(
 ) {
     val isOver = dailyTotal > calorieGoal
     val diff = if (isOver) dailyTotal - calorieGoal else calorieGoal - dailyTotal
-    val progress = (dailyTotal.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1.2f) // Allow slightly over for visual
+    val progress = remember(dailyTotal, calorieGoal) {
+        if (calorieGoal <= 0) {
+            if (dailyTotal > 0) 1.2f else 0f
+        } else {
+            (dailyTotal.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1.2f)
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -470,6 +495,12 @@ fun CalorieSummaryCard(
                     text = if (isOver) "Calories over" else "Calories left",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Consumed: $dailyTotal / $calorieGoal kcal",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 4.dp)
                 )
                 activityLevel?.let {
                     Text(
@@ -500,6 +531,13 @@ fun CalorieSummaryCard(
                         style = Stroke(width = 12.dp.toPx())
                     )
                 }
+
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
             }
         }
     }

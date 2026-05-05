@@ -41,12 +41,18 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalLocale
 import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import com.francescocanossi.lazycal.DaySummary
 import com.francescocanossi.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
@@ -87,12 +93,23 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
     var editDateValue by remember { mutableStateOf("") }
     
     var showAddWeightDialog by remember { mutableStateOf(false) }
+    var showMacroDetail by remember { mutableStateOf(false) }
     var newWeightValue by remember { mutableStateOf("") }
     var newDateValue by remember { mutableStateOf(todayStr) }
     
     val datePickerState = rememberDatePickerState()
     var showDatePicker by remember { mutableStateOf(false) }
     var datePickerTarget by remember { mutableStateOf("edit") } // "edit" or "add"
+
+    if (showMacroDetail) {
+        val todaySummary = summaryMap[todayStr]
+        MacroDetailDialog(
+            protein = todaySummary?.totalProtein ?: 0,
+            carbs = todaySummary?.totalCarbs ?: 0,
+            fats = todaySummary?.totalFats ?: 0,
+            onDismiss = { showMacroDetail = false }
+        )
+    }
 
     if (showDatePicker) {
         DatePickerDialog(
@@ -323,31 +340,27 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        // 1. Top Cards Row
-        Row(
+        // 1. Top Cards
+        val todaySummary = summaryMap[todayStr]
+        val totalProtein = todaySummary?.totalProtein ?: 0
+        val totalCarbs = todaySummary?.totalCarbs ?: 0
+        val totalFats = todaySummary?.totalFats ?: 0
+        
+        MacroCircleCard(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            val todaySummary = summaryMap[todayStr]
-            val totalProtein = todaySummary?.totalProtein ?: 0
-            val totalCarbs = todaySummary?.totalCarbs ?: 0
-            val totalFats = todaySummary?.totalFats ?: 0
-            
-            MacroCircleCard(
-                modifier = Modifier.weight(1.2f),
-                protein = totalProtein,
-                carbs = totalCarbs,
-                fats = totalFats,
-                backgroundColor = cardColor
-            )
-            
-            StreakProgressCard(
-                modifier = Modifier.weight(0.8f),
-                streak = streak,
-                weekSuccess = weekSuccess,
-                backgroundColor = cardColor
-            )
-        }
+            protein = totalProtein,
+            carbs = totalCarbs,
+            fats = totalFats,
+            backgroundColor = cardColor,
+            onClick = { showMacroDetail = true }
+        )
+        
+        StreakProgressCard(
+            modifier = Modifier.fillMaxWidth(),
+            streak = streak,
+            weekSuccess = weekSuccess,
+            backgroundColor = cardColor
+        )
 
         // 2. Weekly Total Card
         WeeklyTotalCard(
@@ -535,7 +548,14 @@ fun WeightLineChart(history: List<WeightEntry>) {
 }
 
 @Composable
-fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, backgroundColor: Color) {
+fun MacroCircleCard(
+    modifier: Modifier,
+    protein: Int,
+    carbs: Int,
+    fats: Int,
+    backgroundColor: Color,
+    onClick: () -> Unit
+) {
     val macroColors = LazyCalTheme.colors
     
     val total = remember(protein, carbs, fats) { (protein + carbs + fats).toFloat().coerceAtLeast(0f) }
@@ -544,7 +564,9 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
     val fRatio = remember(fats, total) { if (total > 0) fats / total else 0f }
 
     Card(
-        modifier = modifier.height(200.dp),
+        modifier = modifier
+            .height(200.dp)
+            .clickable { onClick() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
@@ -557,12 +579,13 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
             )
             
             Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(110.dp)) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 10.dp.toPx()
+                        val strokeWidth = 12.dp.toPx()
                         val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
                         val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
                         
@@ -600,9 +623,7 @@ fun MacroCircleCard(modifier: Modifier, protein: Int, carbs: Int, fats: Int, bac
                     }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MacroLegendItem(macroColors.protein, "Protein", "${protein}g")
                     MacroLegendItem(macroColors.carbs, "Carbs", "${carbs}g")
                     MacroLegendItem(macroColors.fats, "Fats", "${fats}g")
@@ -648,7 +669,10 @@ fun StreakProgressCard(modifier: Modifier, streak: Int, weekSuccess: List<Boolea
             
             Spacer(modifier = Modifier.height(16.dp))
             val days = listOf("S", "M", "T", "W", "T", "F", "S")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
                 days.forEachIndexed { i, day ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(day, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f))
@@ -909,6 +933,165 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int) {
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun MacroDetailDialog(
+    protein: Int,
+    carbs: Int,
+    fats: Int,
+    onDismiss: () -> Unit
+) {
+    val macroColors = LazyCalTheme.colors
+    val total = (protein + carbs + fats).toFloat().coerceAtLeast(1f)
+    
+    val pRatio = protein / total
+    val cRatio = carbs / total
+    val fRatio = fats / total
+
+    var selectedMacro by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+        title = { Text("Daily Macros Detail", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(220.dp)
+                        .pointerInput(protein, carbs, fats) {
+                            detectTapGestures { offset ->
+                                val center = Offset(size.width / 2f, size.height / 2f)
+                                val delta = offset - center
+                                val distance = sqrt(delta.x * delta.x + delta.y * delta.y)
+                                val radius = size.width / 2f
+                                
+                                if (distance in (radius * 0.5f)..radius) {
+                                    var angle = Math.toDegrees(atan2(delta.y.toDouble(), delta.x.toDouble())).toFloat()
+                                    if (angle < 0) angle += 360f
+                                    
+                                    val adjustedAngle = (angle + 90f) % 360f
+                                    
+                                    val pAngle = pRatio * 360f
+                                    val cAngle = cRatio * 360f
+                                    
+                                    selectedMacro = when {
+                                        adjustedAngle < pAngle -> "Protein"
+                                        adjustedAngle < pAngle + cAngle -> "Carbs"
+                                        else -> "Fats"
+                                    }
+                                } else {
+                                    selectedMacro = null
+                                }
+                            }
+                        }
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val baseStrokeWidth = 35.dp.toPx()
+                        val highlightStrokeWidth = 45.dp.toPx()
+                        
+                        fun drawMacroArc(color: Color, startAngle: Float, sweepAngle: Float, isSelected: Boolean) {
+                            val currentStroke = if (isSelected) highlightStrokeWidth else baseStrokeWidth
+                            val arcSize = Size(size.width - highlightStrokeWidth, size.height - highlightStrokeWidth)
+                            val topLeft = Offset(highlightStrokeWidth / 2, highlightStrokeWidth / 2)
+                            
+                            drawArc(
+                                color = if (selectedMacro == null || isSelected) color else color.copy(alpha = 0.4f),
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = false,
+                                topLeft = topLeft,
+                                size = arcSize,
+                                style = Stroke(currentStroke)
+                            )
+                        }
+
+                        drawMacroArc(
+                            color = macroColors.protein,
+                            startAngle = -90f,
+                            sweepAngle = 360f * pRatio,
+                            isSelected = selectedMacro == "Protein"
+                        )
+                        drawMacroArc(
+                            color = macroColors.carbs,
+                            startAngle = -90f + (360f * pRatio),
+                            sweepAngle = 360f * cRatio,
+                            isSelected = selectedMacro == "Carbs"
+                        )
+                        drawMacroArc(
+                            color = macroColors.fats,
+                            startAngle = -90f + (360f * (pRatio + cRatio)),
+                            sweepAngle = 360f * fRatio,
+                            isSelected = selectedMacro == "Fats"
+                        )
+                    }
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (selectedMacro != null) {
+                            val quad = when (selectedMacro) {
+                                "Protein" -> MacroQuad(macroColors.protein, "Protein", protein, pRatio)
+                                "Carbs" -> MacroQuad(macroColors.carbs, "Carbs", carbs, cRatio)
+                                else -> MacroQuad(macroColors.fats, "Fats", fats, fRatio)
+                            }
+                            Text(quad.label, style = MaterialTheme.typography.labelLarge, color = quad.color, fontWeight = FontWeight.Bold)
+                            Text(quad.value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            Text("${(quad.ratio * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
+                        } else {
+                            Text("${total.toInt()}", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                            Text("total grams", style = MaterialTheme.typography.labelMedium)
+                            Text("Tap a section", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        }
+                    }
+                }
+                
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    MacroDetailRow(macroColors.protein, "Protein", protein, pRatio)
+                    MacroDetailRow(macroColors.carbs, "Carbs", carbs, cRatio)
+                    MacroDetailRow(macroColors.fats, "Fats", fats, fRatio)
+                }
+                
+                Text(
+                    "Tap on chart sections to see details",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    )
+}
+
+private data class MacroQuad(val color: Color, val label: String, val grams: Int, val ratio: Float) {
+    val value: String get() = "${grams}g"
+}
+
+@Composable
+fun MacroDetailRow(color: Color, label: String, grams: Int, ratio: Float) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(color))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${grams}g", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.width(12.dp))
+            Text("${(ratio * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

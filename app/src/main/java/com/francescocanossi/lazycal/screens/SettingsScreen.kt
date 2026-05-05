@@ -67,7 +67,8 @@ fun SettingsScreen(
     var tempGoal by remember { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
     
     var showBackupPrompt by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showDeleteDataDialog by remember { mutableStateOf(false) }
+    var showDeleteModelDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -119,8 +120,13 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         val newGoal = tempGoal.toIntOrNull() ?: userConfig.dailyCalorieGoal
-                        // Manual goal override clears activity level
-                        viewModel.saveUserConfig(newGoal, userConfig.themeMode, activityLevel = null)
+                        // Manual goal override clears activity level ONLY if the goal is actually changed
+                        val newActivityLevel = if (newGoal == userConfig.dailyCalorieGoal) {
+                            userConfig.activityLevel
+                        } else {
+                            null
+                        }
+                        viewModel.saveUserConfig(newGoal, userConfig.themeMode, activityLevel = newActivityLevel)
                         showGoalDialog = false
                     }
                 ) {
@@ -149,7 +155,7 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showBackupPrompt = false
-                        showDeleteDialog = true
+                        showDeleteDataDialog = true
                     }
                 ) {
                     Text("No, I've already backed up")
@@ -158,25 +164,49 @@ fun SettingsScreen(
         )
     }
 
-    if (showDeleteDialog) {
+    if (showDeleteDataDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Data and Model?") },
-            text = { Text("This will permanently delete all your food entries and the AI model. This action cannot be undone.") },
+            onDismissRequest = { showDeleteDataDialog = false },
+            title = { Text("Delete All Data?") },
+            text = { Text("This will permanently delete all your food entries and weight history. The AI model will be kept. This action cannot be undone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteModel()
-                        showDeleteDialog = false
+                        viewModel.deleteAllData()
+                        showDeleteDataDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Data")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDataDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showDeleteModelDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteModelDialog = false },
+            title = { Text("Delete AI Model?") },
+            text = { Text("This will delete the downloaded AI model files (approx. 40MB). Your food entries and history will be kept. You will need to download the model again to use the AI.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteModelOnly()
+                        showDeleteModelDialog = false
                         onBack()
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete Everything")
+                    Text("Delete Model")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(onClick = { showDeleteModelDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -381,7 +411,25 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             Text("Danger Zone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Button(onClick = { showBackupPrompt = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { showDeleteModelDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.8f))
+                ) {
+                    Text("Delete AI Model")
+                }
+                Button(
+                    onClick = { showBackupPrompt = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Data")
+                }
+            }
         }
     }
 }

@@ -116,16 +116,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .map { summaries ->
             val summaryMap = summaries.associateBy { it.dayId }
             val calendar = Calendar.getInstance()
-            // Reliably find the Sunday of the current week by backing up from today
-            while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
+            // Go to the end of current week (Saturday)
+            while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SATURDAY) {
+                calendar.add(Calendar.DAY_OF_YEAR, 1)
             }
 
             val week = mutableListOf<DaySummary>()
-            for (i in 0 until 7) {
+            // Provide 31 days (approx 1 month)
+            for (i in 0 until 31) {
                 val dateStr = dateFormat.format(calendar.time)
-                week.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
-                calendar.add(Calendar.DAY_OF_YEAR, 1)
+                week.add(0, summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
+                calendar.add(Calendar.DAY_OF_YEAR, -1)
             }
             week
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -298,7 +299,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteModel() {
+    fun deleteModelOnly() {
+        viewModelScope.launch(Dispatchers.IO) {
+            conversation?.close()
+            engine?.close()
+            conversation = null
+            engine = null
+            cachedConversation = null
+            cachedEngine = null
+            modelManager.deleteModel()
+            withContext(Dispatchers.Main) {
+                _uiState.value = ChatState.ModelMissing
+                _inputErrorMessage.value = null
+            }
+        }
+    }
+
+    fun deleteAllData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.deleteAll()
+            weightDao.deleteAll()
+            withContext(Dispatchers.Main) {
+                _inputErrorMessage.value = "All data deleted successfully."
+            }
+        }
+    }
+
+    fun deleteEverything() {
         viewModelScope.launch(Dispatchers.IO) {
             conversation?.close()
             engine?.close()
@@ -308,6 +335,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             cachedEngine = null
             modelManager.deleteModel()
             foodDao.deleteAll()
+            weightDao.deleteAll()
             withContext(Dispatchers.Main) {
                 _uiState.value = ChatState.ModelMissing
                 _inputErrorMessage.value = null
