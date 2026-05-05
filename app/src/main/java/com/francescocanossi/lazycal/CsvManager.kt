@@ -3,14 +3,27 @@ package com.francescocanossi.lazycal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class CsvManager(private val foodDao: FoodDao, private val weightDao: WeightDao) {
+class CsvManager(
+    private val foodDao: FoodDao,
+    private val weightDao: WeightDao,
+    private val userConfigDao: UserConfigDao
+) {
 
     suspend fun getExportCSV(): String = withContext(Dispatchers.IO) {
         val foodEntries = foodDao.getAllEntries()
         val weightEntries = weightDao.getAllWeightEntriesSync()
+        val userConfig = userConfigDao.getUserConfigSync() ?: UserConfig()
         
         val csv = StringBuilder("Type,Date,Name/Value,Amount,Calories,Protein(g),Carbs(g),Fats(g),Original Input\n")
         
+        // Export Profile Config
+        csv.append("PROFILE,,Age,${userConfig.age ?: ""},,,,,\n")
+        csv.append("PROFILE,,Weight,${userConfig.weight ?: ""},,,,,\n")
+        csv.append("PROFILE,,Height,${userConfig.height ?: ""},,,,,\n")
+        csv.append("PROFILE,,Gender,${userConfig.gender ?: ""},,,,,\n")
+        csv.append("PROFILE,,Goal,${userConfig.dailyCalorieGoal},,,,,\n")
+        csv.append("PROFILE,,Activity,${userConfig.activityLevel ?: ""},,,,,\n")
+
         foodEntries.forEach { entry ->
             csv.append("FOOD,")
             csv.append("${entry.dayId},")
@@ -44,6 +57,8 @@ class CsvManager(private val foodDao: FoodDao, private val weightDao: WeightDao)
             
             val isOldFormat = !header.startsWith("Type")
 
+            var currentUserConfig = userConfigDao.getUserConfigSync() ?: UserConfig()
+
             dataLines.forEach { line ->
                 val parts = parseCsvLine(line)
                 if (isOldFormat) {
@@ -64,6 +79,21 @@ class CsvManager(private val foodDao: FoodDao, private val weightDao: WeightDao)
                     if (parts.size >= 3) {
                         val type = parts[0]
                         when (type) {
+                            "PROFILE" -> {
+                                if (parts.size >= 4) {
+                                    val key = parts[2]
+                                    val value = parts[3]
+                                    currentUserConfig = when (key) {
+                                        "Age" -> currentUserConfig.copy(age = value.toIntOrNull())
+                                        "Weight" -> currentUserConfig.copy(weight = value.toDoubleOrNull())
+                                        "Height" -> currentUserConfig.copy(height = value.toDoubleOrNull())
+                                        "Gender" -> currentUserConfig.copy(gender = if (value.isBlank()) null else value)
+                                        "Goal" -> currentUserConfig.copy(dailyCalorieGoal = value.toIntOrNull() ?: currentUserConfig.dailyCalorieGoal)
+                                        "Activity" -> currentUserConfig.copy(activityLevel = if (value.isBlank()) null else value)
+                                        else -> currentUserConfig
+                                    }
+                                }
+                            }
                             "FOOD" -> {
                                 if (parts.size >= 9) {
                                     val entry = FoodEntry(
@@ -93,6 +123,7 @@ class CsvManager(private val foodDao: FoodDao, private val weightDao: WeightDao)
                     }
                 }
             }
+            userConfigDao.saveUserConfig(currentUserConfig)
             true
         } catch (_: Exception) {
             false

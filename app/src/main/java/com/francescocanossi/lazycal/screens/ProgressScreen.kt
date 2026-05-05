@@ -47,6 +47,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material3.DatePickerState
+import androidx.compose.material3.SelectableDates
+import java.util.TimeZone
 import com.francescocanossi.lazycal.DaySummary
 import com.francescocanossi.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
@@ -87,6 +92,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
     val locale = LocalLocale.current.platformLocale
     val summaryMap = remember(summaries) { summaries.associateBy { it.dayId } }
     val todayStr = remember(locale) { SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date()) }
+    val weightDays = remember(weightHistory) { weightHistory.map { it.dayId }.toSet() }
 
     var weightToDelete by remember { mutableStateOf<WeightEntry?>(null) }
     var weightToEdit by remember { mutableStateOf<WeightEntry?>(null) }
@@ -100,7 +106,28 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
     var newWeightValue by remember { mutableStateOf("") }
     var newDateValue by remember { mutableStateOf(todayStr) }
     
-    val datePickerState = rememberDatePickerState()
+    val datePickerState = rememberDatePickerState(
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                    timeInMillis = utcTimeMillis
+                }
+                val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(calendar.time)
+
+                val todayCalendar = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+
+                if (utcTimeMillis > todayCalendar.timeInMillis) return false
+                return dateStr == todayStr || summaryMap.containsKey(dateStr) || weightDays.contains(dateStr)
+            }
+        }
+    )
     var showDatePicker by remember { mutableStateOf(false) }
     var datePickerTarget by remember { mutableStateOf("edit") } // "edit" or "add"
 
@@ -321,7 +348,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
         )
     }
 
-    val weekSuccess = remember(summaryMap, userConfig, locale, selectedDate) {
+    val weekData = remember(summaryMap, userConfig, locale, selectedDate) {
         val df = SimpleDateFormat("yyyy-MM-dd", locale)
         val calendar = Calendar.getInstance()
         val dateParts = selectedDate.split("-")
@@ -337,11 +364,9 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
         (0..6).map {
             val dateStr = df.format(calendar.time)
             val calories = summaryMap[dateStr]?.totalCalories ?: 0
-            
-            // Goal met if calories are > 0 and under/equal to goal
-            val met = calories in 1..userConfig.dailyCalorieGoal
+            val dayNum = calendar.get(Calendar.DAY_OF_MONTH)
             calendar.add(Calendar.DAY_OF_YEAR, 1)
-            met
+            dayNum to calories
         }
     }
 
@@ -382,12 +407,18 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
         ) {
             Row(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Viewing Data for", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = "Date",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     val displayDate = remember(selectedDate, locale) {
                         try {
                             val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDate)
@@ -398,14 +429,19 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
                     }
                     Text(displayDate, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.height(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     if (selectedDate != todayStr) {
-                        TextButton(onClick = { selectedDate = todayStr }) {
-                            Text("Today")
+                        IconButton(onClick = { selectedDate = todayStr }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_history),
+                                contentDescription = "Today",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                    }
-                    IconButton(onClick = { showMainDatePicker = true }) {
-                        Icon(painterResource(id = R.drawable.ic_history), contentDescription = "Change Date", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -478,7 +514,9 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             StreakProgressCard(
                 modifier = Modifier.fillMaxWidth(),
                 streak = streak,
-                weekSuccess = weekSuccess,
+                weekCalories = weekData.map { it.second },
+                weekDayNumbers = weekData.map { it.first },
+                goal = userConfig.dailyCalorieGoal,
                 backgroundColor = cardColor
             )
 
@@ -767,42 +805,71 @@ fun MacroLegendItem(color: Color, label: String, amount: String) {
 }
 
 @Composable
-fun StreakProgressCard(modifier: Modifier, streak: Int, weekSuccess: List<Boolean>, backgroundColor: Color) {
+fun StreakProgressCard(
+    modifier: Modifier,
+    streak: Int,
+    weekCalories: List<Int>,
+    weekDayNumbers: List<Int>,
+    goal: Int,
+    backgroundColor: Color
+) {
     val themeColors = LazyCalTheme.colors
 
     Card(
-        modifier = modifier.height(200.dp),
+        modifier = modifier.height(160.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp).fillMaxSize(),
+            modifier = Modifier.padding(12.dp).fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = streak.toString(),
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = themeColors.fats
             )
-            Text(text = "Day Streak", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(text = "Day Streak", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             val days = listOf("S", "M", "T", "W", "T", "F", "S")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 days.forEachIndexed { i, day ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(day, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f))
-                        Spacer(modifier = Modifier.height(4.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = day,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
+                        )
+                        
+                        val calories = weekCalories.getOrElse(i) { 0 }
+                        val dotColor = when {
+                            calories == 0 -> Color.LightGray.copy(0.4f)
+                            calories < goal * 0.8 -> themeColors.fats // Yellow
+                            calories <= goal -> themeColors.success // Green
+                            else -> themeColors.error // Red
+                        }
+                        
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(if (weekSuccess.getOrElse(i) { false }) themeColors.fats else Color.LightGray.copy(0.4f))
+                                .background(dotColor)
+                        )
+
+                        Text(
+                            text = weekDayNumbers.getOrElse(i) { "" }.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -944,8 +1011,34 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
     val maxDataVal = remember(data) { data.maxOf { it.second }.toFloat() }
     val yMax = remember(maxDataVal, goal) { (maxDataVal.coerceAtLeast(goal.toFloat()) * 1.3f).coerceAtLeast(1000f) }
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
-    Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
+    Box(modifier = Modifier
+        .fillMaxWidth()
+        .height(220.dp)
+        .pointerInput(data, yMax) {
+            detectTapGestures { offset ->
+                val paddingLeftPx = 40.dp.toPx()
+                val paddingBottomPx = 30.dp.toPx()
+                val chartWidth = size.width - paddingLeftPx
+                val chartHeight = size.height - paddingBottomPx
+                val spacing = if (data.size > 1) chartWidth / (data.size - 1) else chartWidth
+                
+                var foundIndex: Int? = null
+                data.forEachIndexed { index, pair ->
+                    val x = paddingLeftPx + index * spacing
+                    val y = chartHeight - (pair.second.toFloat() / yMax * chartHeight)
+                    
+                    val dx = offset.x - x
+                    val dy = offset.y - y
+                    if (sqrt(dx * dx + dy * dy) < 25.dp.toPx()) {
+                        foundIndex = index
+                    }
+                }
+                selectedIndex = foundIndex
+            }
+        }
+    ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
@@ -1038,13 +1131,40 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
             data.forEachIndexed { index, pair ->
                 val x = paddingLeft + index * spacing
                 val y = getStepY(pair.second.toFloat())
-                val color = if (pair.second > goal) themeColors.error else themeColors.success
+                val isSelected = selectedIndex == index
+                val color = when {
+                    pair.second == 0 -> Color.LightGray.copy(0.4f)
+                    pair.second < goal * 0.8 -> themeColors.fats
+                    pair.second <= goal -> themeColors.success
+                    else -> themeColors.error
+                }
                 
                 drawCircle(
                     color = color,
-                    radius = 5.dp.toPx(),
+                    radius = if (isSelected) 7.dp.toPx() else 5.dp.toPx(),
                     center = Offset(x, y)
                 )
+
+                if (isSelected) {
+                    drawCircle(
+                        color = Color.White,
+                        radius = 9.dp.toPx(),
+                        center = Offset(x, y),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    
+                    drawContext.canvas.nativeCanvas.drawText(
+                        "${pair.second} kcal",
+                        x,
+                        y - 12.dp.toPx(),
+                        Paint().apply {
+                            this.color = labelColor
+                            this.textSize = 12.sp.toPx()
+                            this.textAlign = Paint.Align.CENTER
+                            this.isFakeBoldText = true
+                        }
+                    )
+                }
                 
                 // X Labels
                 drawContext.canvas.nativeCanvas.drawText(

@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
@@ -51,20 +52,31 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import android.content.res.Configuration
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.francescocanossi.lazycal.ChatViewModel
+import androidx.compose.material3.DatePickerState
+import androidx.compose.material3.SelectableDates
+import java.util.TimeZone
 import com.francescocanossi.lazycal.DaySummary
+import com.francescocanossi.lazycal.WeightEntry
 import com.francescocanossi.lazycal.FoodEntry
 import com.francescocanossi.lazycal.R
 import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
@@ -137,6 +149,13 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val isProcessing by viewModel.isProcessing.collectAsState()
     val weeklySummaries by viewModel.weeklySummaries.collectAsState()
     val selectedDay by viewModel.selectedDay.collectAsState()
+    val archivedDays by viewModel.archivedDays.collectAsState()
+    val weightHistory by viewModel.weightHistory.collectAsState()
+
+    val daysWithData = remember(archivedDays, weightHistory) {
+        (archivedDays.map { it.dayId } + weightHistory.map { it.dayId }).toSet()
+    }
+
     var inputText by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
@@ -192,7 +211,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
         val maxHeight = this.maxHeight
         val maxWidth = this.maxWidth
 
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Column(modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 16.dp)) {
             if (isLandscape) {
                 Row(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -208,6 +227,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                             weeklySummaries = weeklySummaries,
                             calorieGoal = userConfig.dailyCalorieGoal,
                             selectedDayId = selectedDay,
+                            daysWithData = daysWithData,
                             onDayClick = { viewModel.selectDay(it) }
                         )
 
@@ -242,6 +262,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         weeklySummaries = weeklySummaries,
                         calorieGoal = userConfig.dailyCalorieGoal,
                         selectedDayId = selectedDay,
+                        daysWithData = daysWithData,
                         onDayClick = { viewModel.selectDay(it) }
                         )
 
@@ -358,100 +379,212 @@ fun ChatScreen(viewModel: ChatViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeeklyTracker(
     weeklySummaries: List<DaySummary>,
     calorieGoal: Int,
     selectedDayId: String,
+    daysWithData: Set<String>,
     onDayClick: (String) -> Unit
 ) {
     val todayId = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date()) }
-    val listState = rememberLazyListState()
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                    timeInMillis = utcTimeMillis
+                }
+                val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(calendar.time)
 
-    // Scroll to today or selected day on first launch
-    LaunchedEffect(weeklySummaries) {
-        if (weeklySummaries.isNotEmpty()) {
-            val targetIndex = weeklySummaries.indexOfFirst { it.dayId == selectedDayId }.takeIf { it != -1 }
-                ?: weeklySummaries.indexOfFirst { it.dayId == todayId }.takeIf { it != -1 }
-                ?: (weeklySummaries.size - 1)
-            
-            listState.scrollToItem(targetIndex)
+                val todayCalendar = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+
+                if (utcTimeMillis > todayCalendar.timeInMillis) return false
+                return dateStr == todayId || daysWithData.contains(dateStr)
+            }
+        }
+    )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = java.util.Date(millis)
+                        val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+                        onDayClick(formatted)
+                    }
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 
-    LazyRow(
-        state = listState,
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        contentPadding = PaddingValues(horizontal = 8.dp)
-    ) {
-        items(weeklySummaries, key = { it.dayId }) { summary ->
-            val isFuture = summary.dayId > todayId
-            val calendar = remember(summary.dayId) {
-                Calendar.getInstance().apply {
-                    val parts = summary.dayId.split("-")
-                    if (parts.size == 3) {
-                        set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
-                    }
-                }
+    val weekRangeTitle = remember(weeklySummaries) {
+        if (weeklySummaries.isEmpty()) ""
+        else {
+            val sdfInput = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val sdfOutput = SimpleDateFormat("d MMM", Locale.getDefault())
+            try {
+                val start = sdfInput.parse(weeklySummaries.first().dayId)
+                val end = sdfInput.parse(weeklySummaries.last().dayId)
+                "Week: ${sdfOutput.format(start!!)} - ${sdfOutput.format(end!!)}"
+            } catch (_: Exception) {
+                "Weekly Tracker"
             }
-            val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
-            val dayOfWeekLabel = remember(summary.dayId) {
-                SimpleDateFormat("E", Locale.getDefault()).format(calendar.time).first().toString().uppercase()
-            }
-            val isSelected = summary.dayId == selectedDayId
+        }
+    }
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { onDayClick(summary.dayId) }
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable { showDatePicker = true }
                     .padding(4.dp)
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(40.dp)
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "Select Date",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                
+                Spacer(modifier = Modifier.width(4.dp))
+                
+                Text(
+                    text = weekRangeTitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            if (selectedDayId != todayId) {
+                IconButton(
+                    onClick = { onDayClick(todayId) },
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    val progress = remember(summary.totalCalories, calorieGoal, isFuture) {
-                        when {
-                            isFuture -> 0f
-                            calorieGoal <= 0 -> if (summary.totalCalories > 0) 1f else 0f
-                            else -> (summary.totalCalories.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1f)
-                        }
-                    }
-                    val isOverGoal = summary.totalCalories > calorieGoal
-                    val color = if (isOverGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
-                    
-                    Canvas(modifier = Modifier.size(36.dp)) {
-                        drawArc(
-                            color = color.copy(alpha = 0.2f),
-                            startAngle = 0f,
-                            sweepAngle = 360f,
-                            useCenter = false,
-                            style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
-                        )
-                        drawArc(
-                            color = color,
-                            startAngle = -90f,
-                            sweepAngle = 360f * progress,
-                            useCenter = false,
-                            style = Stroke(width = 2.dp.toPx())
-                        )
-                    }
-                    Text(
-                        text = dayOfWeekLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_history),
+                        contentDescription = "Today",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = dayOfMonth.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                weeklySummaries.take(7).forEach { summary ->
+                    val isFuture = summary.dayId > todayId
+                    val calendar = remember(summary.dayId) {
+                        Calendar.getInstance().apply {
+                            val parts = summary.dayId.split("-")
+                            if (parts.size == 3) {
+                                set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+                            }
+                        }
+                    }
+                    val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
+                    val dayOfWeekLabel = remember(summary.dayId) {
+                        SimpleDateFormat("E", Locale.getDefault()).format(calendar.time).first().toString().uppercase()
+                    }
+                    val isSelected = summary.dayId == selectedDayId
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isSelected) Color.White.copy(alpha = 0.2f) else Color.Transparent)
+                            .clickable { onDayClick(summary.dayId) }
+                            .padding(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            val progress = remember(summary.totalCalories, calorieGoal, isFuture) {
+                                when {
+                                    isFuture -> 0f
+                                    calorieGoal <= 0 -> if (summary.totalCalories > 0) 1f else 0f
+                                    else -> (summary.totalCalories.toFloat() / calorieGoal.toFloat()).coerceIn(0f, 1f)
+                                }
+                            }
+                            val color = when {
+                                summary.totalCalories == 0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                summary.totalCalories < calorieGoal * 0.8 -> LazyCalTheme.colors.fats
+                                summary.totalCalories <= calorieGoal -> LazyCalTheme.colors.success
+                                else -> LazyCalTheme.colors.error
+                            }
+                            
+                            Canvas(modifier = Modifier.size(32.dp)) {
+                                drawArc(
+                                    color = color.copy(alpha = 0.2f),
+                                    startAngle = 0f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                                )
+                                drawArc(
+                                    color = color,
+                                    startAngle = -90f,
+                                    sweepAngle = 360f * progress,
+                                    useCenter = false,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                            Text(
+                                text = dayOfWeekLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Text(
+                            text = dayOfMonth.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
             }
         }
     }
@@ -513,7 +646,12 @@ fun CalorieSummaryCard(
             }
 
             Box(contentAlignment = Alignment.Center) {
-                val color = if (isOver) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
+                val color = when {
+                    dailyTotal == 0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                    dailyTotal < calorieGoal * 0.8 -> LazyCalTheme.colors.fats
+                    dailyTotal <= calorieGoal -> LazyCalTheme.colors.success
+                    else -> LazyCalTheme.colors.error
+                }
                 
                 Canvas(modifier = Modifier.size(100.dp)) {
                     drawArc(

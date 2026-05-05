@@ -29,7 +29,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -57,7 +59,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val foodDao = db.foodDao()
     private val userConfigDao = db.userConfigDao()
     private val weightDao = db.weightDao()
-    private val csvManager = CsvManager(foodDao, weightDao)
+    private val csvManager = CsvManager(foodDao, weightDao, userConfigDao)
 
     private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
@@ -112,24 +114,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val archivedDays: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val weeklySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
-        .map { summaries ->
-            val summaryMap = summaries.associateBy { it.dayId }
-            val calendar = Calendar.getInstance()
-            // Go to the end of current week (Saturday)
-            while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SATURDAY) {
-                calendar.add(Calendar.DAY_OF_YEAR, 1)
-            }
+    val weightHistory: StateFlow<List<WeightEntry>> = weightDao.getAllWeightEntries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-            val week = mutableListOf<DaySummary>()
-            // Provide 31 days (approx 1 month)
-            for (i in 0 until 31) {
-                val dateStr = dateFormat.format(calendar.time)
-                week.add(0, summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-            }
-            week
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val weeklySummaries: StateFlow<List<DaySummary>> = combine(
+        foodDao.getAllDaySummaries(),
+        _selectedDay
+    ) { summaries, selectedDay ->
+        val summaryMap = summaries.associateBy { it.dayId }
+        val calendar = Calendar.getInstance()
+        
+        // Parse selectedDay
+        try {
+            dateFormat.parse(selectedDay)?.let { calendar.time = it }
+        } catch (_: Exception) {}
+
+        // Move to Sunday of that week
+        while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
+        }
+
+        val week = mutableListOf<DaySummary>()
+        for (i in 0 until 7) {
+            val dateStr = dateFormat.format(calendar.time)
+            week.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        week
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val foodEntries: StateFlow<List<FoodEntry>> = _selectedDay.flatMapLatest { dayId ->

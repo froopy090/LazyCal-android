@@ -74,25 +74,20 @@ class ProgressViewModel(application: Application) : AndroidViewModel(application
         val summaryMap = summaries.associateBy { it.dayId }
         val calendar = Calendar.getInstance()
         
-        // Start from today or yesterday depending on if goal is met
+        // Start from today or yesterday depending on if calories are logged
         var checkDate = dateFormat.format(calendar.time)
         val todaySummary = summaryMap[checkDate]
         
-        // If today is logged and we are OVER the goal, streak is broken immediately.
-        if (todaySummary != null && todaySummary.totalCalories > config.dailyCalorieGoal) {
-            return@combine 0
-        }
-
         // If today is not logged, we check starting from yesterday.
-        // If today is logged and met, we check starting from today.
-        if (todaySummary == null) {
+        // If today is logged (regardless of goal), we check starting from today.
+        if (todaySummary == null || todaySummary.totalCalories == 0) {
             calendar.add(Calendar.DAY_OF_YEAR, -1)
             checkDate = dateFormat.format(calendar.time)
         }
 
         while (true) {
             val summary = summaryMap[checkDate]
-            if (summary != null && summary.totalCalories <= config.dailyCalorieGoal) {
+            if (summary != null && summary.totalCalories > 0) {
                 streak++
                 calendar.add(Calendar.DAY_OF_YEAR, -1)
                 checkDate = dateFormat.format(calendar.time)
