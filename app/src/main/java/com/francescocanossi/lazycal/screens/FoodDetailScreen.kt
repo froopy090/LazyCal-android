@@ -55,6 +55,8 @@ fun FoodDetailScreen(
     var tempValue by remember(entry, showEditDialog) {
         mutableStateOf(
             when (showEditDialog) {
+                EditField.NAME -> entry.foodName
+                EditField.AMOUNT -> entry.amount
                 EditField.CALORIES -> entry.calories.toString()
                 EditField.PROTEIN -> entry.protein.toString()
                 EditField.CARBS -> entry.carbs.toString()
@@ -66,6 +68,7 @@ fun FoodDetailScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     showEditDialog?.let { field ->
+        val isNumeric = field != EditField.NAME && field != EditField.AMOUNT
         AlertDialog(
             onDismissRequest = {
                 keyboardController?.hide()
@@ -75,9 +78,18 @@ fun FoodDetailScreen(
             text = {
                 OutlinedTextField(
                     value = tempValue,
-                    onValueChange = { if (it.all { c -> c.isDigit() }) tempValue = it },
-                    label = { Text("${field.label} (${field.unit})") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { 
+                        if (isNumeric) {
+                            if (it.all { c -> c.isDigit() }) tempValue = it 
+                        } else {
+                            tempValue = it
+                        }
+                    },
+                    label = { 
+                        val label = if (field.unit.isNotEmpty()) "${field.label} (${field.unit})" else field.label
+                        Text(label) 
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
                     modifier = Modifier.fillMaxWidth()
                 )
             },
@@ -85,16 +97,15 @@ fun FoodDetailScreen(
                 TextButton(
                     onClick = {
                         keyboardController?.hide()
-                        val newValue = tempValue.toIntOrNull()
-                        if (newValue != null) {
-                            val updatedEntry = when (field) {
-                                EditField.CALORIES -> entry.copy(calories = newValue)
-                                EditField.PROTEIN -> entry.copy(protein = newValue)
-                                EditField.CARBS -> entry.copy(carbs = newValue)
-                                EditField.FATS -> entry.copy(fats = newValue)
-                            }
-                            viewModel.updateEntry(updatedEntry)
+                        val updatedEntry = when (field) {
+                            EditField.NAME -> entry.copy(foodName = tempValue)
+                            EditField.AMOUNT -> entry.copy(amount = tempValue)
+                            EditField.CALORIES -> tempValue.toIntOrNull()?.let { entry.copy(calories = it) }
+                            EditField.PROTEIN -> tempValue.toIntOrNull()?.let { entry.copy(protein = it) }
+                            EditField.CARBS -> tempValue.toIntOrNull()?.let { entry.copy(carbs = it) }
+                            EditField.FATS -> tempValue.toIntOrNull()?.let { entry.copy(fats = it) }
                         }
+                        updatedEntry?.let { viewModel.updateEntry(it) }
                         showEditDialog = null
                     }
                 ) {
@@ -156,19 +167,33 @@ fun FoodDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showEditDialog = EditField.NAME },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = entry.foodName,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Original description: ${entry.originalInput}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = entry.foodName,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Original description: ${entry.originalInput}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_settings),
+                        contentDescription = "Edit Name",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                        modifier = Modifier.height(20.dp)
                     )
                 }
             }
@@ -197,7 +222,7 @@ fun FoodDetailScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     DetailRow("Date", entry.dayId, onEdit = { showDatePicker = true })
-                    DetailRow("Amount", entry.amount)
+                    DetailRow("Amount", entry.amount, onEdit = { showEditDialog = EditField.AMOUNT })
                     DetailRow("Protein", "${entry.protein}g", onEdit = { showEditDialog = EditField.PROTEIN })
                     DetailRow("Carbs", "${entry.carbs}g", onEdit = { showEditDialog = EditField.CARBS })
                     DetailRow("Fats", "${entry.fats}g", onEdit = { showEditDialog = EditField.FATS })
@@ -208,6 +233,8 @@ fun FoodDetailScreen(
 }
 
 enum class EditField(val label: String, val unit: String) {
+    NAME("Name", ""),
+    AMOUNT("Amount", ""),
     CALORIES("Calories", "kcal"),
     PROTEIN("Protein", "g"),
     CARBS("Carbs", "g"),

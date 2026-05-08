@@ -5,10 +5,17 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,30 +25,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,16 +68,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import android.content.res.Configuration
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -74,6 +87,16 @@ import androidx.core.content.FileProvider
 import com.francescocanossi.lazycal.ChatViewModel
 import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import java.util.TimeZone
 import com.francescocanossi.lazycal.DaySummary
 import com.francescocanossi.lazycal.WeightEntry
@@ -151,6 +174,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val selectedDay by viewModel.selectedDay.collectAsState()
     val archivedDays by viewModel.archivedDays.collectAsState()
     val weightHistory by viewModel.weightHistory.collectAsState()
+    val todayId = viewModel.todayId
 
     val daysWithData = remember(archivedDays, weightHistory) {
         (archivedDays.map { it.dayId } + weightHistory.map { it.dayId }).toSet()
@@ -163,6 +187,21 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scrollState = rememberScrollState()
+    val portraitListState = rememberLazyListState()
+    val landscapeListState = rememberLazyListState()
+    
+    val isPortraitAtTop by remember {
+        derivedStateOf {
+            portraitListState.firstVisibleItemIndex == 0 && portraitListState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    val isLandscapeAtTop by remember {
+        derivedStateOf {
+            landscapeListState.firstVisibleItemIndex == 0 && landscapeListState.firstVisibleItemScrollOffset == 0
+        }
+    }
+
+    var isCalorieBoxVisible by remember { mutableStateOf(true) }
 
     val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
     val imageUri = remember {
@@ -211,41 +250,153 @@ fun ChatScreen(viewModel: ChatViewModel) {
         val maxHeight = this.maxHeight
         val maxWidth = this.maxWidth
 
-        Column(modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 16.dp)) {
-            if (isLandscape) {
-                Row(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Left Side: Summaries
-                    Column(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp)
+            ) {
+                if (isLandscape) {
+                    Row(
                         modifier = Modifier
-                            .width(maxWidth * 0.4f)
-                            .verticalScroll(scrollState)
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        WeeklyTracker(
-                            weeklySummaries = weeklySummaries,
-                            calorieGoal = userConfig.dailyCalorieGoal,
-                            selectedDayId = selectedDay,
-                            daysWithData = daysWithData,
-                            onDayClick = { viewModel.selectDay(it) }
-                        )
+                        // Left Side: Summaries
+                        Column(
+                            modifier = Modifier
+                                .width(maxWidth * 0.4f)
+                                .verticalScroll(scrollState)
+                        ) {
+                            WeeklyTracker(
+                                weeklySummaries = weeklySummaries,
+                                calorieGoal = userConfig.dailyCalorieGoal,
+                                selectedDayId = selectedDay,
+                                daysWithData = daysWithData,
+                                onDayClick = { viewModel.selectDay(it) },
+                                onResetClick = { viewModel.resetToToday() }
+                            )
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                            AnimatedVisibility(
+                                visible = isCalorieBoxVisible,
+                                enter = expandVertically() + fadeIn(),
+                                exit = shrinkVertically() + fadeOut()
+                            ) {
+                                Column {
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    CalorieSummaryCard(
+                                        dailyTotal = dailyTotal,
+                                        calorieGoal = userConfig.dailyCalorieGoal,
+                                        activityLevel = userConfig.activityLevel
+                                    )
+                                }
+                            }
 
-                        CalorieSummaryCard(
-                            dailyTotal = dailyTotal,
-                            calorieGoal = userConfig.dailyCalorieGoal,
-                            activityLevel = userConfig.activityLevel
-                        )
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                IconButton(
+                                    onClick = { isCalorieBoxVisible = !isCalorieBoxVisible },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .padding(bottom = 0.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isCalorieBoxVisible) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = if (isCalorieBoxVisible) "Toggle Calorie Box" else "Show Calorie Box",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
                         }
+
+                        VerticalDivider(
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
 
                         // Right Side: Food Entries
                         LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            state = landscapeListState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(top = 0.dp),
+                            contentPadding = PaddingValues(
+                                top = if (isLandscapeAtTop) 8.dp else 0.dp,
+                                bottom = 84 .dp,
+                                start = 0.dp,
+                                end = 0.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            items(entries, key = { it.id }) { entry ->
+                                FoodEntryItem(
+                                    entry = entry,
+                                    onDelete = { viewModel.deleteEntry(entry) },
+                                    onClick = { viewModel.showDetail(entry) },
+                                    isReadOnly = isReadOnly
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Portrait Layout
+                    WeeklyTracker(
+                        weeklySummaries = weeklySummaries,
+                        calorieGoal = userConfig.dailyCalorieGoal,
+                        selectedDayId = selectedDay,
+                        daysWithData = daysWithData,
+                        onDayClick = { viewModel.selectDay(it) },
+                        onResetClick = { viewModel.resetToToday() }
+                    )
+
+                    AnimatedVisibility(
+                        visible = isCalorieBoxVisible,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            CalorieSummaryCard(
+                                dailyTotal = dailyTotal,
+                                calorieGoal = userConfig.dailyCalorieGoal,
+                                activityLevel = userConfig.activityLevel
+                            )
+                        }
+                    }
+
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        IconButton(
+                            onClick = { isCalorieBoxVisible = !isCalorieBoxVisible },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isCalorieBoxVisible) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isCalorieBoxVisible) "Toggle Calorie Box" else "Show Calorie Box",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(top = 4.dp, bottom = 0.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    LazyColumn(
+                        state = portraitListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentPadding = PaddingValues(
+                            top = if (isPortraitAtTop) 8.dp else 0.dp,
+                            bottom = 84.dp,
+                            start = 0.dp,
+                            end = 0.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         items(entries, key = { it.id }) { entry ->
                             FoodEntryItem(
                                 entry = entry,
@@ -254,130 +405,181 @@ fun ChatScreen(viewModel: ChatViewModel) {
                                 isReadOnly = isReadOnly
                             )
                         }
-                        }
-                        }
-                        } else {
-                        // Portrait Layout
-                        WeeklyTracker(
-                        weeklySummaries = weeklySummaries,
-                        calorieGoal = userConfig.dailyCalorieGoal,
-                        selectedDayId = selectedDay,
-                        daysWithData = daysWithData,
-                        onDayClick = { viewModel.selectDay(it) }
-                        )
+                    }
+                }
+            }
 
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        CalorieSummaryCard(
-                        dailyTotal = dailyTotal,
-                        calorieGoal = userConfig.dailyCalorieGoal,
-                        activityLevel = userConfig.activityLevel
-                        )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                LazyColumn(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            if (!isReadOnly && selectedDay != todayId) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 100.dp)
+                        .size(40.dp)
+                        .clickable { viewModel.toggleEditMode() },
+                    shape = CircleShape,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
-                    items(entries, key = { it.id }) { entry ->
-                        FoodEntryItem(
-                            entry = entry,
-                            onDelete = { viewModel.deleteEntry(entry) },
-                            onClick = { viewModel.showDetail(entry) },
-                            isReadOnly = isReadOnly
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Fine modifica",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
 
-            if (isProcessing) {
-                val messages = remember {
-                    listOf(
-                        "Calculating your calories...",
-                        "AI is running locally on device, this may take a while.",
-                        "Hint: Being specific with portions leads to better results.",
-                        "Hint: If you already know the calories, just include them!",
-                        "Did you know? Accuracy is highest when you specify weights.",
-                        "Tip: You can tap on the food entry to manually modify values."
-                    )
-                }
-                var messageIndex by remember { mutableStateOf(0) }
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        delay(2500)
-                        messageIndex = (messageIndex + 1) % messages.size
-                    }
-                }
-                Text(
-                    text = messages[messageIndex],
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+            if (isReadOnly && selectedDay != todayId && !isProcessing) {
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    textAlign = TextAlign.Center
-                )
-            }
-            if (!isReadOnly) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 24.dp)
+                        .size(48.dp)
+                        .clickable { viewModel.toggleEditMode() },
+                    shape = CircleShape,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("What did you eat?") },
-                        enabled = !isProcessing,
-                        singleLine = true
-                    )
-                    IconButton(
-                        onClick = {
-                            val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                                cameraLauncher.launch(imageUri)
-                            } else {
-                                permissionLauncher.launch(Manifest.permission.CAMERA)
-                            }
-                        },
-                        enabled = !isProcessing
-                    ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
-                            imageVector = Icons.Default.PhotoCamera,
-                            contentDescription = "Camera"
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Modify this day",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
-                    IconButton(
-                        onClick = { galleryLauncher.launch("image/*") },
-                        enabled = !isProcessing
+                }
+            } else if (!isReadOnly || isProcessing) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "Gallery"
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                viewModel.sendMessage(inputText)
-                                inputText = ""
+                        if (isProcessing) {
+                            val messages = remember {
+                                listOf(
+                                    "Calculating your calories...",
+                                    "AI is running locally on device, this may take a while.",
+                                    "Hint: Being specific with portions leads to better results.",
+                                    "Hint: If you already know the calories, just include them!",
+                                    "Did you know? Accuracy is highest when you specify weights.",
+                                    "Tip: You can tap on the food entry to manually modify values."
+                                )
                             }
-                        },
-                        enabled = !isProcessing
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_send),
-                            contentDescription = "Send"
-                        )
+                            var messageIndex by remember { mutableStateOf(0) }
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    delay(2500)
+                                    messageIndex = (messageIndex + 1) % messages.size
+                                }
+                            }
+                            Text(
+                                text = messages[messageIndex],
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        if (!isReadOnly) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 0.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextField(
+                                    value = inputText,
+                                    onValueChange = { inputText = it },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = {
+                                        Text(
+                                            "What did you eat?",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    },
+                                    enabled = !isProcessing,
+                                    singleLine = true,
+                                    shape = MaterialTheme.shapes.large,
+                                    textStyle = MaterialTheme.typography.bodyMedium,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledIndicatorColor = Color.Transparent
+                                    )
+                                )
+                                IconButton(
+                                    onClick = {
+                                        val permissionCheckResult =
+                                            ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.CAMERA
+                                            )
+                                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                            cameraLauncher.launch(imageUri)
+                                        } else {
+                                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    },
+                                    enabled = !isProcessing
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoCamera,
+                                        contentDescription = "Camera"
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { galleryLauncher.launch("image/*") },
+                                    enabled = !isProcessing
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Image,
+                                        contentDescription = "Gallery"
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        if (inputText.isNotBlank()) {
+                                            viewModel.sendMessage(inputText)
+                                            inputText = ""
+                                        }
+                                    },
+                                    enabled = !isProcessing
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_send),
+                                        contentDescription = "Send"
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -386,32 +588,50 @@ fun WeeklyTracker(
     calorieGoal: Int,
     selectedDayId: String,
     daysWithData: Set<String>,
-    onDayClick: (String) -> Unit
+    onDayClick: (String) -> Unit,
+    onResetClick: () -> Unit
 ) {
     val todayId = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date()) }
     var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState(
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                    timeInMillis = utcTimeMillis
-                }
-                val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }.format(calendar.time)
-
-                val todayCalendar = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, 23)
-                    set(Calendar.MINUTE, 59)
-                    set(Calendar.SECOND, 59)
-                    set(Calendar.MILLISECOND, 999)
-                }
-
-                if (utcTimeMillis > todayCalendar.timeInMillis) return false
-                return dateStr == todayId || daysWithData.contains(dateStr)
+    
+    // Calculate page count and initial page
+    val pageCount = remember(weeklySummaries) { (weeklySummaries.size / 7).coerceAtLeast(1) }
+    val initialPage = remember(weeklySummaries, selectedDayId) {
+        val index = weeklySummaries.indexOfFirst { it.dayId == selectedDayId }
+        if (index != -1) index / 7 else (pageCount - 1).coerceAtLeast(0)
+    }
+    
+    val pagerState = rememberPagerState(initialPage = initialPage) { pageCount }
+    val scope = rememberCoroutineScope()
+    val todayPageIndex = remember(weeklySummaries, todayId) {
+        val index = weeklySummaries.indexOfFirst { it.dayId == todayId }
+        if (index != -1) index / 7 else -1
+    }
+    
+    // Scroll to page when selectedDayId changes (e.g. from outside or DatePicker)
+    LaunchedEffect(selectedDayId, weeklySummaries) {
+        val index = weeklySummaries.indexOfFirst { it.dayId == selectedDayId }
+        if (index != -1) {
+            val targetPage = index / 7
+            if (pagerState.currentPage != targetPage) {
+                pagerState.animateScrollToPage(targetPage)
             }
         }
-    )
+    }
+
+    val datePickerState = key(selectedDayId) {
+        rememberDatePickerState(
+            initialSelectedDateMillis = remember {
+                try {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    sdf.timeZone = TimeZone.getTimeZone("UTC")
+                    sdf.parse(selectedDayId)?.time
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        )
+    }
 
     if (showDatePicker) {
         DatePickerDialog(
@@ -419,8 +639,9 @@ fun WeeklyTracker(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val date = java.util.Date(millis)
-                        val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        sdf.timeZone = TimeZone.getTimeZone("UTC")
+                        val formatted = sdf.format(java.util.Date(millis))
                         onDayClick(formatted)
                     }
                     showDatePicker = false
@@ -438,14 +659,18 @@ fun WeeklyTracker(
         }
     }
 
-    val weekRangeTitle = remember(weeklySummaries) {
+    val weekRangeTitle = remember(weeklySummaries, pagerState.currentPage) {
         if (weeklySummaries.isEmpty()) ""
         else {
+            val page = pagerState.currentPage
+            val startIndex = page * 7
+            val endIndex = (startIndex + 6).coerceAtMost(weeklySummaries.size - 1)
+            
             val sdfInput = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val sdfOutput = SimpleDateFormat("d MMM", Locale.getDefault())
             try {
-                val start = sdfInput.parse(weeklySummaries.first().dayId)
-                val end = sdfInput.parse(weeklySummaries.last().dayId)
+                val start = sdfInput.parse(weeklySummaries[startIndex].dayId)
+                val end = sdfInput.parse(weeklySummaries[endIndex].dayId)
                 "Week: ${sdfOutput.format(start!!)} - ${sdfOutput.format(end!!)}"
             } catch (_: Exception) {
                 "Weekly Tracker"
@@ -485,9 +710,14 @@ fun WeeklyTracker(
             
             Spacer(modifier = Modifier.weight(1f))
             
-            if (selectedDayId != todayId) {
+            if (selectedDayId != todayId || pagerState.currentPage != todayPageIndex) {
                 IconButton(
-                    onClick = { onDayClick(todayId) },
+                    onClick = { 
+                        onResetClick()
+                        if (todayPageIndex != -1 && pagerState.currentPage != todayPageIndex) {
+                            scope.launch { pagerState.animateScrollToPage(todayPageIndex) }
+                        }
+                    },
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
@@ -502,15 +732,19 @@ fun WeeklyTracker(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
             Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                weeklySummaries.take(7).forEach { summary ->
+                val startIndex = page * 7
+                val weekDays = weeklySummaries.subList(startIndex, (startIndex + 7).coerceAtMost(weeklySummaries.size))
+                
+                weekDays.forEach { summary ->
                     val isFuture = summary.dayId > todayId
                     val calendar = remember(summary.dayId) {
                         Calendar.getInstance().apply {
@@ -572,7 +806,11 @@ fun WeeklyTracker(
                                 text = dayOfWeekLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                color = when {
+                                    summary.dayId == todayId -> MaterialTheme.colorScheme.primary
+                                    isSelected -> Color.White
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                },
                                 fontSize = 10.sp
                             )
                         }
@@ -580,7 +818,11 @@ fun WeeklyTracker(
                             text = dayOfMonth.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = when {
+                                summary.dayId == todayId -> MaterialTheme.colorScheme.primary
+                                isSelected -> Color.White
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             fontSize = 9.sp
                         )
                     }
@@ -717,37 +959,96 @@ fun FoodEntryItem(
             .clickable { onClick() }
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = entry.foodName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Text(text = entry.amount, style = MaterialTheme.typography.bodySmall)
+                if (entry.amount.isNotBlank()) {
+                    Text(
+                        text = entry.amount,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Text(
                     text = "P: ${entry.protein}g C: ${entry.carbs}g F: ${entry.fats}g",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                 )
             }
-            Text(
-                text = "${entry.calories} kcal",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "${entry.calories}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "kcal",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                )
+            }
             
             if (!isReadOnly) {
-                IconButton(onClick = { showDeleteConfirm = true }) {
+                IconButton(
+                    onClick = { showDeleteConfirm = true },
+                    modifier = Modifier.size(24.dp)
+                ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_delete),
                         contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
     }
 }
+
+fun Modifier.fadingEdge(
+    topEdgeHeight: Dp = 16.dp,
+    bottomEdgeHeight: Dp = 16.dp
+): Modifier = this
+    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+    .drawWithContent {
+        drawContent()
+        val topEdgeHeightPx = topEdgeHeight.toPx()
+        val bottomEdgeHeightPx = bottomEdgeHeight.toPx()
+
+        if (topEdgeHeightPx > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    topEdgeHeightPx to Color.Black,
+                    startY = 0f,
+                    endY = topEdgeHeightPx
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+
+        if (bottomEdgeHeightPx > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    size.height - bottomEdgeHeightPx to Color.Black,
+                    size.height to Color.Transparent,
+                    startY = size.height - bottomEdgeHeightPx,
+                    endY = size.height
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+    }

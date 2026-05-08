@@ -108,8 +108,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedDay = MutableStateFlow(todayId)
     val selectedDay: StateFlow<String> = _selectedDay.asStateFlow()
 
-    val isReadOnly: StateFlow<Boolean> = _selectedDay.map { it != todayId }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    private val _minSelectedDay = MutableStateFlow(todayId)
+    private val _maxSelectedDay = MutableStateFlow(todayId)
+
+    private val _isForcedEditMode = MutableStateFlow(false)
+    val isReadOnly: StateFlow<Boolean> = combine(_selectedDay, _isForcedEditMode) { day, forced ->
+        day != todayId && !forced
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleEditMode() {
+        _isForcedEditMode.value = !_isForcedEditMode.value
+    }
 
     val archivedDays: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -119,28 +128,82 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     val weeklySummaries: StateFlow<List<DaySummary>> = combine(
         foodDao.getAllDaySummaries(),
-        _selectedDay
-    ) { summaries, selectedDay ->
+        _selectedDay,
+        _minSelectedDay,
+        _maxSelectedDay
+    ) { summaries, selectedDay, minSelected, maxSelected ->
         val summaryMap = summaries.associateBy { it.dayId }
-        val calendar = Calendar.getInstance()
         
-        // Parse selectedDay
+        // Calculate the start date: oldest entry, today, or the minimum selected during session
+        val calendar = Calendar.getInstance()
+        var oldestDate: Date = calendar.time
+        
+        // Check oldest entry in DB
+        summaries.lastOrNull()?.dayId?.let { dayId ->
+            try {
+                dateFormat.parse(dayId)?.let { 
+                    if (it.before(oldestDate)) oldestDate = it
+                }
+            } catch (_: Exception) {}
+        }
+        
+        // Check session minimum
         try {
-            dateFormat.parse(selectedDay)?.let { calendar.time = it }
+            dateFormat.parse(minSelected)?.let {
+                if (it.before(oldestDate)) oldestDate = it
+            }
+        } catch (_: Exception) {}
+        
+        // Check current selected day
+        try {
+            dateFormat.parse(selectedDay)?.let {
+                if (it.before(oldestDate)) oldestDate = it
+            }
         } catch (_: Exception) {}
 
-        // Move to Sunday of that week
+        calendar.time = oldestDate
+        // Move to Sunday of the start week
         while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
             calendar.add(Calendar.DAY_OF_YEAR, -1)
         }
 
-        val week = mutableListOf<DaySummary>()
-        for (i in 0 until 7) {
-            val dateStr = dateFormat.format(calendar.time)
-            week.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        val startCalendar = calendar.clone() as Calendar
+        
+        val endCalendar = Calendar.getInstance()
+        // Ensure endCalendar covers the newest selected day during session or the current selection
+        try {
+            dateFormat.parse(maxSelected)?.let {
+                if (it.after(endCalendar.time)) {
+                    endCalendar.time = it
+                }
+            }
+        } catch (_: Exception) {}
+
+        try {
+            dateFormat.parse(selectedDay)?.let {
+                if (it.after(endCalendar.time)) {
+                    endCalendar.time = it
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Move to Saturday of the end week
+        while (endCalendar.get(Calendar.DAY_OF_WEEK) != Calendar.SATURDAY) {
+            endCalendar.add(Calendar.DAY_OF_YEAR, 1)
         }
-        week
+
+        val allDays = mutableListOf<DaySummary>()
+        val current = startCalendar.clone() as Calendar
+        
+        // Generate all days from start to end, ensuring we always have full weeks
+        while (current.timeInMillis <= endCalendar.timeInMillis || allDays.size % 7 != 0) {
+            val dateStr = dateFormat.format(current.time)
+            allDays.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
+            current.add(Calendar.DAY_OF_YEAR, 1)
+            
+            if (allDays.size > 10000) break // Increased safety break
+        }
+        allDays
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -215,14 +278,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
+        if (dayId < _minSelectedDay.value) _minSelectedDay.value = dayId
+        if (dayId > _maxSelectedDay.value) _maxSelectedDay.value = dayId
         _inputErrorMessage.value = null
         _detailEntry.value = null
+        _isForcedEditMode.value = false
     }
 
     fun resetToToday() {
         _selectedDay.value = todayId
+        _minSelectedDay.value = todayId
+        _maxSelectedDay.value = todayId
         _inputErrorMessage.value = null
         _detailEntry.value = null
+        _isForcedEditMode.value = false
     }
 
     fun showDetail(entry: FoodEntry) {
@@ -421,7 +490,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendImage(imagePath: String) {
-        if (_selectedDay.value != todayId || _isProcessing.value) return
+        if (isReadOnly.value || _isProcessing.value) return
 
         viewModelScope.launch(Dispatchers.IO) {
             _isProcessing.value = true
@@ -507,7 +576,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendMessage(text: String) {
-        if (_selectedDay.value != todayId || _isProcessing.value) return
+        if (isReadOnly.value || _isProcessing.value) return
 
         if (!isPromptSafe(text)) {
             _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
@@ -626,7 +695,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 protein = protein,
                 carbs = carbs,
                 fats = fats,
-                dayId = todayId,
+                dayId = _selectedDay.value,
                 originalInput = originalInput
             )
             foodDao.insert(entry)
