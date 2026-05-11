@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -42,6 +43,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.core.graphics.scale
 
 sealed class ChatState {
     object CheckingModel : ChatState()
@@ -56,9 +58,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val db = ChatDatabase.getDatabase(application)
     private val foodDao = db.foodDao()
     private val userConfigDao = db.userConfigDao()
-    private val csvManager = CsvManager(foodDao)
+    private val weightDao = db.weightDao()
+    private val csvManager = CsvManager(foodDao, weightDao, userConfigDao)
 
     private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    fun addWeightEntry(weight: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val entry = WeightEntry(weight = weight, dayId = todayId)
+            weightDao.insert(entry)
+            
+            // Sync current weight based on full history
+            val history = weightDao.getAllWeightEntriesSync()
+            val mostRecent = history.sortedWith(
+                compareByDescending<WeightEntry> { it.dayId }
+                    .thenByDescending { it.timestamp }
+            ).firstOrNull()
+            
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            userConfigDao.saveUserConfig(current.copy(weight = mostRecent?.weight))
+        }
+    }
 
     private val _isOnline = MutableStateFlow(checkInitialOnline())
     val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
@@ -83,34 +103,111 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val todayId = dateFormat.format(Date())
+    
+    private val _todayId = MutableStateFlow(dateFormat.format(Date()))
+    val todayIdFlow: StateFlow<String> = _todayId.asStateFlow()
+    val todayId: String get() = _todayId.value
 
     private val _selectedDay = MutableStateFlow(todayId)
     val selectedDay: StateFlow<String> = _selectedDay.asStateFlow()
 
-    val isReadOnly: StateFlow<Boolean> = _selectedDay.map { it != todayId }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    private val _minSelectedDay = MutableStateFlow(todayId)
+    private val _maxSelectedDay = MutableStateFlow(todayId)
+
+    private val _isForcedEditMode = MutableStateFlow(false)
+    val isReadOnly: StateFlow<Boolean> = combine(_selectedDay, _isForcedEditMode, _todayId) { day, forced, today ->
+        day != today && !forced
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleEditMode() {
+        _isForcedEditMode.value = !_isForcedEditMode.value
+    }
 
     val archivedDays: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val weeklySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
-        .map { summaries ->
-            val summaryMap = summaries.associateBy { it.dayId }
-            val calendar = Calendar.getInstance()
-            // Reliably find the Sunday of the current week by backing up from today
-            while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-            }
+    val weightHistory: StateFlow<List<WeightEntry>> = weightDao.getAllWeightEntries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-            val week = mutableListOf<DaySummary>()
-            for (i in 0 until 7) {
-                val dateStr = dateFormat.format(calendar.time)
-                week.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
-                calendar.add(Calendar.DAY_OF_YEAR, 1)
+    val weeklySummaries: StateFlow<List<DaySummary>> = combine(
+        foodDao.getAllDaySummaries(),
+        _selectedDay,
+        _minSelectedDay,
+        _maxSelectedDay
+    ) { summaries, selectedDay, minSelected, maxSelected ->
+        val summaryMap = summaries.associateBy { it.dayId }
+        
+        // Calculate the start date: oldest entry, today, or the minimum selected during session
+        val calendar = Calendar.getInstance()
+        var oldestDate: Date = calendar.time
+        
+        // Check oldest entry in DB
+        summaries.lastOrNull()?.dayId?.let { dayId ->
+            try {
+                dateFormat.parse(dayId)?.let { 
+                    if (it.before(oldestDate)) oldestDate = it
+                }
+            } catch (_: Exception) {}
+        }
+        
+        // Check session minimum
+        try {
+            dateFormat.parse(minSelected)?.let {
+                if (it.before(oldestDate)) oldestDate = it
             }
-            week
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        } catch (_: Exception) {}
+        
+        // Check current selected day
+        try {
+            dateFormat.parse(selectedDay)?.let {
+                if (it.before(oldestDate)) oldestDate = it
+            }
+        } catch (_: Exception) {}
+
+        calendar.time = oldestDate
+        // Move to Sunday of the start week
+        while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
+        }
+
+        val startCalendar = calendar.clone() as Calendar
+        
+        val endCalendar = Calendar.getInstance()
+        // Ensure endCalendar covers the newest selected day during session or the current selection
+        try {
+            dateFormat.parse(maxSelected)?.let {
+                if (it.after(endCalendar.time)) {
+                    endCalendar.time = it
+                }
+            }
+        } catch (_: Exception) {}
+
+        try {
+            dateFormat.parse(selectedDay)?.let {
+                if (it.after(endCalendar.time)) {
+                    endCalendar.time = it
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Move to Saturday of the end week
+        while (endCalendar.get(Calendar.DAY_OF_WEEK) != Calendar.SATURDAY) {
+            endCalendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val allDays = mutableListOf<DaySummary>()
+        val current = startCalendar.clone() as Calendar
+        
+        // Generate all days from start to end, ensuring we always have full weeks
+        while (current.timeInMillis <= endCalendar.timeInMillis || allDays.size % 7 != 0) {
+            val dateStr = dateFormat.format(current.time)
+            allDays.add(summaryMap[dateStr] ?: DaySummary(dateStr, 0, 0, 0, 0))
+            current.add(Calendar.DAY_OF_YEAR, 1)
+            
+            if (allDays.size > 10000) break // Increased safety break
+        }
+        allDays
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val foodEntries: StateFlow<List<FoodEntry>> = _selectedDay.flatMapLatest { dayId ->
@@ -134,6 +231,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private var engine: Engine? = null
     private var conversation: Conversation? = null
+    private var isVisionEnabled: Boolean = false
 
     private val systemInstruction = """
         You are an expert nutritionist AI. Your task is to convert food descriptions into a JSON array of objects.
@@ -171,7 +269,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         checkModel()
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
-        
+
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(
             application,
@@ -179,18 +277,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             filter,
             ContextCompat.RECEIVER_EXPORTED
         )
-    }
 
+        // Update todayId periodically (every minute)
+        viewModelScope.launch {
+            while (true) {
+                val currentToday = dateFormat.format(Date())
+                if (_todayId.value != currentToday) {
+                    _todayId.value = currentToday
+                }
+                kotlinx.coroutines.delay(60000)
+            }
+        }
+    }
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
+        if (dayId < _minSelectedDay.value) _minSelectedDay.value = dayId
+        if (dayId > _maxSelectedDay.value) _maxSelectedDay.value = dayId
         _inputErrorMessage.value = null
         _detailEntry.value = null
+        _isForcedEditMode.value = false
     }
 
     fun resetToToday() {
         _selectedDay.value = todayId
+        _minSelectedDay.value = todayId
+        _maxSelectedDay.value = todayId
         _inputErrorMessage.value = null
         _detailEntry.value = null
+        _isForcedEditMode.value = false
     }
 
     fun showDetail(entry: FoodEntry) {
@@ -201,10 +315,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _detailEntry.value = null
     }
 
-    fun saveUserConfig(goal: Int, themeMode: String) {
+    fun saveUserConfig(
+        goal: Int,
+        themeMode: String,
+        age: Int? = null,
+        weight: Double? = null,
+        height: Double? = null,
+        gender: String? = null,
+        activityLevel: String? = "KEEP_OLD"
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             val current = userConfigDao.getUserConfigSync() ?: UserConfig()
-            userConfigDao.saveUserConfig(current.copy(dailyCalorieGoal = goal, themeMode = themeMode))
+            userConfigDao.saveUserConfig(
+                current.copy(
+                    dailyCalorieGoal = goal,
+                    themeMode = themeMode,
+                    age = age ?: current.age,
+                    weight = weight ?: current.weight,
+                    height = height ?: current.height,
+                    gender = gender ?: current.gender,
+                    activityLevel = if (activityLevel == "KEEP_OLD") current.activityLevel else activityLevel
+                )
+            )
         }
     }
 
@@ -261,7 +393,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteModel() {
+    fun deleteModelOnly() {
+        viewModelScope.launch(Dispatchers.IO) {
+            conversation?.close()
+            engine?.close()
+            conversation = null
+            engine = null
+            cachedConversation = null
+            cachedEngine = null
+            modelManager.deleteModel()
+            withContext(Dispatchers.Main) {
+                _uiState.value = ChatState.ModelMissing
+                _inputErrorMessage.value = null
+            }
+        }
+    }
+
+    fun deleteAllData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.deleteAll()
+            weightDao.deleteAll()
+            withContext(Dispatchers.Main) {
+                _inputErrorMessage.value = "All data deleted successfully."
+            }
+        }
+    }
+
+    fun deleteEverything() {
         viewModelScope.launch(Dispatchers.IO) {
             conversation?.close()
             engine?.close()
@@ -271,6 +429,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             cachedEngine = null
             modelManager.deleteModel()
             foodDao.deleteAll()
+            weightDao.deleteAll()
             withContext(Dispatchers.Main) {
                 _uiState.value = ChatState.ModelMissing
                 _inputErrorMessage.value = null
@@ -297,16 +456,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     Engine(engineConfig).also { it.initialize() }
                 }
-                
+
                 val conversationConfig = ConversationConfig(
                     systemInstruction = Contents.of(systemInstruction)
                 )
                 val conversationInstance = engineInstance.createConversation(conversationConfig)
-                
+
                 engine = engineInstance
                 conversation = conversationInstance
+                isVisionEnabled = true
                 cachedEngine = engineInstance
                 cachedConversation = conversationInstance
+                cachedIsVisionEnabled = true
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
@@ -315,7 +476,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         initializationJob?.join()
     }
-
     private fun initializeEngine() {
         // No longer used for immediate initialization
     }
@@ -325,6 +485,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private var cachedEngine: Engine? = null
         @Volatile
         private var cachedConversation: Conversation? = null
+        @Volatile
+        private var cachedIsVisionEnabled: Boolean = false
         private var initializationJob: Job? = null
     }
 
@@ -341,7 +503,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendImage(imagePath: String) {
-        if (_selectedDay.value != todayId || _isProcessing.value) return
+        if (isReadOnly.value || _isProcessing.value) return
 
         viewModelScope.launch(Dispatchers.IO) {
             _isProcessing.value = true
@@ -350,15 +512,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 ensureEngineInitialized()
                 if (conversation == null) return@launch
 
+                if (!isVisionEnabled) {
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Image analysis is unavailable with this model. Please use text input instead."
+                    }
+                    return@launch
+                }
+                
                 // Pre-process and resize image to target resolution (720x880) to reduce GPU preprocessing lag
-                val processedImagePath = withContext(Dispatchers.Default) {
+                val processedImagePath = withContext(Dispatchers.IO) {
                     try {
                         val originalFile = File(imagePath)
                         val options = BitmapFactory.Options()
                         val bitmap = BitmapFactory.decodeFile(originalFile.absolutePath, options)
                         if (bitmap != null) {
                             // Model target is approx 720x880 as seen in logs
-                            val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 720, 880, true)
+                            val resizedBitmap = bitmap.scale(720, 880)
                             val outFile = File(getApplication<Application>().externalCacheDir, "processed_inference.jpg")
                             FileOutputStream(outFile).use { out ->
                                 resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
@@ -420,7 +589,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendMessage(text: String) {
-        if (_selectedDay.value != todayId || _isProcessing.value) return
+        if (isReadOnly.value || _isProcessing.value) return
+
+        val caloriesInput = text.trim().toIntOrNull()
+        if (caloriesInput != null) {
+            if (caloriesInput !in 0..10000) {
+                _inputErrorMessage.value = "Please enter a valid calorie amount between 0 and 10000."
+                return
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val entry = FoodEntry(
+                        foodName = "Quick Entry",
+                        amount = "",
+                        calories = caloriesInput,
+                        protein = 0,
+                        carbs = 0,
+                        fats = 0,
+                        dayId = _selectedDay.value,
+                        originalInput = "Direct Input: $caloriesInput"
+                    )
+                    foodDao.insert(entry)
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Failed to save entry: ${e.message}"
+                    }
+                }
+            }
+            return
+        }
 
         if (!isPromptSafe(text)) {
             _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
@@ -476,7 +673,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun parseAndSave(jsonString: String, originalInput: String) = withContext(Dispatchers.Default) {
         try {
-            // Find the bounds of the JSON content to ignore noise or markdown
+            // Find the bounds of the JSON content to ignore noise or Markdown
             val startIndex = jsonString.indexOfFirst { it == '[' || it == '{' }
             val endIndex = jsonString.indexOfLast { it == ']' || it == '}' }
 
@@ -539,7 +736,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 protein = protein,
                 carbs = carbs,
                 fats = fats,
-                dayId = todayId,
+                dayId = _selectedDay.value,
                 originalInput = originalInput
             )
             foodDao.insert(entry)

@@ -55,14 +55,20 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
+fun SettingsScreen(
+    viewModel: ChatViewModel,
+    onBack: () -> Unit,
+    onNavigateToCalculator: () -> Unit,
+    onNavigateToProfile: () -> Unit
+) {
     val userConfig by viewModel.userConfig.collectAsState()
     
     var showGoalDialog by remember { mutableStateOf(false) }
     var tempGoal by remember { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
     
     var showBackupPrompt by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showDeleteDataDialog by remember { mutableStateOf(false) }
+    var showDeleteModelDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -114,7 +120,13 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                 TextButton(
                     onClick = {
                         val newGoal = tempGoal.toIntOrNull() ?: userConfig.dailyCalorieGoal
-                        viewModel.saveUserConfig(newGoal, userConfig.themeMode)
+                        // Manual goal override clears activity level ONLY if the goal is actually changed
+                        val newActivityLevel = if (newGoal == userConfig.dailyCalorieGoal) {
+                            userConfig.activityLevel
+                        } else {
+                            null
+                        }
+                        viewModel.saveUserConfig(newGoal, userConfig.themeMode, activityLevel = newActivityLevel)
                         showGoalDialog = false
                     }
                 ) {
@@ -143,7 +155,7 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                 TextButton(
                     onClick = {
                         showBackupPrompt = false
-                        showDeleteDialog = true
+                        showDeleteDataDialog = true
                     }
                 ) {
                     Text("No, I've already backed up")
@@ -152,25 +164,49 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
         )
     }
 
-    if (showDeleteDialog) {
+    if (showDeleteDataDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Data and Model?") },
-            text = { Text("This will permanently delete all your food entries and the AI model. This action cannot be undone.") },
+            onDismissRequest = { showDeleteDataDialog = false },
+            title = { Text("Delete All Data?") },
+            text = { Text("This will permanently delete all your food entries and weight history. The AI model will be kept. This action cannot be undone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteModel()
-                        showDeleteDialog = false
+                        viewModel.deleteAllData()
+                        showDeleteDataDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Data")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDataDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showDeleteModelDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteModelDialog = false },
+            title = { Text("Delete AI Model?") },
+            text = { Text("This will delete the downloaded AI model files (approx. 40MB). Your food entries and history will be kept. You will need to download the model again to use the AI.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteModelOnly()
+                        showDeleteModelDialog = false
                         onBack()
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete Everything")
+                    Text("Delete Model")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(onClick = { showDeleteModelDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -238,12 +274,58 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                     Column {
                         Text("Daily Calorie Goal", style = MaterialTheme.typography.bodyMedium)
                         Text("${userConfig.dailyCalorieGoal} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        userConfig.activityLevel?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                     Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                 }
             }
+
+            Button(
+                onClick = onNavigateToCalculator,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Calculate your needs")
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (userConfig.age != null || userConfig.weight != null || userConfig.height != null) {
+                Text("Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToProfile() },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            userConfig.age?.let { Text("Age: $it", style = MaterialTheme.typography.bodyMedium) }
+                            userConfig.gender?.let { Text("Gender: $it", style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            userConfig.weight?.let { Text("Weight: $it kg", style = MaterialTheme.typography.bodyMedium) }
+                            userConfig.height?.let { Text("Height: $it cm", style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Tap to edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            } else {
+                Text("Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = onNavigateToProfile,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Complete your profile")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             
             Text("Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             themeOptions.forEach { text ->
@@ -329,7 +411,25 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(8.dp))
             Text("Danger Zone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Button(onClick = { showBackupPrompt = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { showDeleteModelDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.8f))
+                ) {
+                    Text("Delete AI Model")
+                }
+                Button(
+                    onClick = { showBackupPrompt = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Data")
+                }
+            }
         }
     }
 }

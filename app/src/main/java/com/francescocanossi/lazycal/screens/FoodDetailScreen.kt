@@ -1,9 +1,11 @@
 package com.francescocanossi.lazycal.screens
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.TimeZone
+import java.util.Date
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +60,8 @@ fun FoodDetailScreen(
     var tempValue by remember(entry, showEditDialog) {
         mutableStateOf(
             when (showEditDialog) {
+                EditField.NAME -> entry.foodName
+                EditField.AMOUNT -> entry.amount
                 EditField.CALORIES -> entry.calories.toString()
                 EditField.PROTEIN -> entry.protein.toString()
                 EditField.CARBS -> entry.carbs.toString()
@@ -64,8 +71,46 @@ fun FoodDetailScreen(
         )
     }
     val keyboardController = LocalSoftwareKeyboardController.current
+    
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = remember(entry.dayId) {
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                sdf.timeZone = TimeZone.getTimeZone("UTC")
+                sdf.parse(entry.dayId)?.time
+            } catch (_: Exception) {
+                null
+            }
+        }
+    )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = Date(millis)
+                        val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+                        viewModel.updateEntry(entry.copy(dayId = formatted))
+                    }
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 
     showEditDialog?.let { field ->
+        val isNumeric = field != EditField.NAME && field != EditField.AMOUNT
         AlertDialog(
             onDismissRequest = {
                 keyboardController?.hide()
@@ -75,9 +120,18 @@ fun FoodDetailScreen(
             text = {
                 OutlinedTextField(
                     value = tempValue,
-                    onValueChange = { if (it.all { c -> c.isDigit() }) tempValue = it },
-                    label = { Text("${field.label} (${field.unit})") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { 
+                        if (isNumeric) {
+                            if (it.all { c -> c.isDigit() }) tempValue = it 
+                        } else {
+                            tempValue = it
+                        }
+                    },
+                    label = { 
+                        val label = if (field.unit.isNotEmpty()) "${field.label} (${field.unit})" else field.label
+                        Text(label) 
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
                     modifier = Modifier.fillMaxWidth()
                 )
             },
@@ -85,16 +139,15 @@ fun FoodDetailScreen(
                 TextButton(
                     onClick = {
                         keyboardController?.hide()
-                        val newValue = tempValue.toIntOrNull()
-                        if (newValue != null) {
-                            val updatedEntry = when (field) {
-                                EditField.CALORIES -> entry.copy(calories = newValue)
-                                EditField.PROTEIN -> entry.copy(protein = newValue)
-                                EditField.CARBS -> entry.copy(carbs = newValue)
-                                EditField.FATS -> entry.copy(fats = newValue)
-                            }
-                            viewModel.updateEntry(updatedEntry)
+                        val updatedEntry = when (field) {
+                            EditField.NAME -> entry.copy(foodName = tempValue)
+                            EditField.AMOUNT -> entry.copy(amount = tempValue)
+                            EditField.CALORIES -> tempValue.toIntOrNull()?.let { entry.copy(calories = it) }
+                            EditField.PROTEIN -> tempValue.toIntOrNull()?.let { entry.copy(protein = it) }
+                            EditField.CARBS -> tempValue.toIntOrNull()?.let { entry.copy(carbs = it) }
+                            EditField.FATS -> tempValue.toIntOrNull()?.let { entry.copy(fats = it) }
                         }
+                        updatedEntry?.let { viewModel.updateEntry(it) }
                         showEditDialog = null
                     }
                 ) {
@@ -110,30 +163,6 @@ fun FoodDetailScreen(
                 }
             }
         )
-    }
-
-    if (showDatePicker) {
-        val calendar = java.util.Calendar.getInstance()
-        val parts = entry.dayId.split("-")
-        if (parts.size == 3) {
-            calendar.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
-        }
-        
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val newDayId = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
-                viewModel.updateEntry(entry.copy(dayId = newDayId))
-                showDatePicker = false
-            },
-            calendar.get(java.util.Calendar.YEAR),
-            calendar.get(java.util.Calendar.MONTH),
-            calendar.get(java.util.Calendar.DAY_OF_MONTH)
-        ).apply {
-            setOnDismissListener { showDatePicker = false }
-            show()
-        }
-        showDatePicker = false // Reset after showing
     }
 
     Scaffold(
@@ -156,19 +185,33 @@ fun FoodDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showEditDialog = EditField.NAME },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = entry.foodName,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Original description: ${entry.originalInput}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = entry.foodName,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Original description: ${entry.originalInput}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_settings),
+                        contentDescription = "Edit Name",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                        modifier = Modifier.height(20.dp)
                     )
                 }
             }
@@ -190,14 +233,14 @@ fun FoodDetailScreen(
                         Text("Calories", style = MaterialTheme.typography.bodyMedium)
                         Text("${entry.calories} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                    Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f))
                 }
             }
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     DetailRow("Date", entry.dayId, onEdit = { showDatePicker = true })
-                    DetailRow("Amount", entry.amount)
+                    DetailRow("Amount", entry.amount, onEdit = { showEditDialog = EditField.AMOUNT })
                     DetailRow("Protein", "${entry.protein}g", onEdit = { showEditDialog = EditField.PROTEIN })
                     DetailRow("Carbs", "${entry.carbs}g", onEdit = { showEditDialog = EditField.CARBS })
                     DetailRow("Fats", "${entry.fats}g", onEdit = { showEditDialog = EditField.FATS })
@@ -208,6 +251,8 @@ fun FoodDetailScreen(
 }
 
 enum class EditField(val label: String, val unit: String) {
+    NAME("Name", ""),
+    AMOUNT("Amount", ""),
     CALORIES("Calories", "kcal"),
     PROTEIN("Protein", "g"),
     CARBS("Carbs", "g"),
@@ -232,7 +277,7 @@ fun DetailRow(label: String, value: String, onEdit: (() -> Unit)? = null) {
                     painter = painterResource(id = R.drawable.ic_settings),
                     contentDescription = "Edit $label",
                     modifier = Modifier.padding(start = 8.dp).height(16.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
                 )
             }
         }
