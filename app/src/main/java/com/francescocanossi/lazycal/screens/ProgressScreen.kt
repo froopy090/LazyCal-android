@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,15 +50,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material3.DatePickerState
-import androidx.compose.material3.SelectableDates
-import java.util.TimeZone
+import androidx.compose.material.icons.filled.ManageHistory
 import com.francescocanossi.lazycal.DaySummary
 import com.francescocanossi.lazycal.ProgressViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 import androidx.compose.material3.TextButton
@@ -71,6 +71,8 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.painterResource
@@ -80,6 +82,7 @@ import com.francescocanossi.lazycal.R
 import com.francescocanossi.lazycal.WeightEntry
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,8 +94,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
 
     val locale = LocalLocale.current.platformLocale
     val summaryMap = remember(summaries) { summaries.associateBy { it.dayId } }
-    val todayStr = remember(locale) { SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date()) }
-    val weightDays = remember(weightHistory) { weightHistory.map { it.dayId }.toSet() }
+    val todayStr = SimpleDateFormat("yyyy-MM-dd", locale).format(Date())
 
     var weightToDelete by remember { mutableStateOf<WeightEntry?>(null) }
     var weightToEdit by remember { mutableStateOf<WeightEntry?>(null) }
@@ -100,36 +102,43 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
     var editDateValue by remember { mutableStateOf("") }
     
     var showAddWeightDialog by remember { mutableStateOf(false) }
+    var showWeightHistoryDialog by remember { mutableStateOf(false) }
     var showMacroDetail by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(todayStr) }
     var showMainDatePicker by remember { mutableStateOf(false) }
     var newWeightValue by remember { mutableStateOf("") }
     var newDateValue by remember { mutableStateOf(todayStr) }
-    
-    val datePickerState = rememberDatePickerState(
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                    timeInMillis = utcTimeMillis
-                }
-                val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }.format(calendar.time)
-
-                val todayCalendar = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, 23)
-                    set(Calendar.MINUTE, 59)
-                    set(Calendar.SECOND, 59)
-                    set(Calendar.MILLISECOND, 999)
-                }
-
-                if (utcTimeMillis > todayCalendar.timeInMillis) return false
-                return dateStr == todayStr || summaryMap.containsKey(dateStr) || weightDays.contains(dateStr)
-            }
-        }
-    )
     var showDatePicker by remember { mutableStateOf(false) }
     var datePickerTarget by remember { mutableStateOf("edit") } // "edit" or "add"
+    
+    val mainDatePickerState = key(selectedDate) {
+        rememberDatePickerState(
+            initialSelectedDateMillis = remember {
+                try {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    sdf.timeZone = TimeZone.getTimeZone("UTC")
+                    sdf.parse(selectedDate)?.time
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        )
+    }
+
+    val weightDatePickerState = key(showDatePicker, weightToEdit, newDateValue) {
+        val targetDate = if (datePickerTarget == "edit") weightToEdit?.dayId ?: todayStr else newDateValue
+        rememberDatePickerState(
+            initialSelectedDateMillis = remember {
+                try {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    sdf.timeZone = TimeZone.getTimeZone("UTC")
+                    sdf.parse(targetDate)?.time
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        )
+    }
 
     if (showMacroDetail) {
         val selectedSummary = summaryMap[selectedDate]
@@ -146,7 +155,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             onDismissRequest = { showMainDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
+                    mainDatePickerState.selectedDateMillis?.let { millis ->
                         val date = Date(millis)
                         selectedDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
                     }
@@ -161,7 +170,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
                 }
             }
         ) {
-            DatePicker(state = datePickerState)
+            DatePicker(state = mainDatePickerState)
         }
     }
 
@@ -170,7 +179,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
+                    weightDatePickerState.selectedDateMillis?.let { millis ->
                         val date = Date(millis)
                         val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
                         if (datePickerTarget == "edit") {
@@ -190,7 +199,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
                 }
             }
         ) {
-            DatePicker(state = datePickerState)
+            DatePicker(state = weightDatePickerState)
         }
     }
 
@@ -383,7 +392,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
         }
 
         var total = 0
-        (0..6).forEach {
+        (0..6).forEach { _ ->
             val dateStr = df.format(calendar.time)
             total += summaryMap[dateStr]?.totalCalories ?: 0
             calendar.add(Calendar.DAY_OF_YEAR, 1)
@@ -407,7 +416,7 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 8.dp, bottom = 4.dp).fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -546,16 +555,28 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
-                IconButton(onClick = { 
-                    newDateValue = todayStr
-                    showAddWeightDialog = true 
-                }) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_add),
-                        contentDescription = "Add weight",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                Row {
+                    IconButton(onClick = { 
+                        showWeightHistoryDialog = true
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.ManageHistory,
+                            contentDescription = "View weight history",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(onClick = { 
+                        newDateValue = todayStr
+                        showAddWeightDialog = true 
+                    }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_add),
+                            contentDescription = "Add weight",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
             
@@ -576,51 +597,88 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             } else {
                 WeightChartCard(weightHistory, cardColor)
             }
-            
-            weightHistory.reversed().forEach { entry ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.2f))
+        }
+
+        if (showWeightHistoryDialog) {
+            WeightHistoryDialog(
+                weightHistory = weightHistory,
+                cardColor = cardColor,
+                onEdit = { entry ->
+                    weightToEdit = entry
+                    editWeightValue = entry.weight.toString()
+                    editDateValue = entry.dayId
+                },
+                onDelete = { entry ->
+                    weightToDelete = entry
+                },
+                onDismiss = { showWeightHistoryDialog = false }
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+fun WeightHistoryDialog(
+    weightHistory: List<WeightEntry>,
+    cardColor: Color,
+    onEdit: (WeightEntry) -> Unit,
+    onDelete: (WeightEntry) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Weight History", fontWeight = FontWeight.Bold) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("${entry.weight} kg", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(entry.dayId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                        }
-                        Row {
-                            IconButton(onClick = { 
-                                weightToEdit = entry 
-                                editWeightValue = entry.weight.toString()
-                                editDateValue = entry.dayId
-                            }) {
-                                Icon(
-                                    painterResource(id = R.drawable.ic_settings),
-                                    contentDescription = "Edit entry",
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            IconButton(onClick = { weightToDelete = entry }) {
-                                Icon(
-                                    painterResource(id = R.drawable.ic_delete),
-                                    contentDescription = "Delete entry",
-                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                    items(weightHistory.reversed()) { entry ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEdit(entry) },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.2f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("${entry.weight} kg", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(entry.dayId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                                }
+                                IconButton(
+                                    onClick = { onDelete(entry) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(id = R.drawable.ic_delete),
+                                        contentDescription = "Delete entry",
+                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-    }
+    )
 }
 
 @Composable
@@ -639,68 +697,6 @@ fun WeightChartCard(history: List<WeightEntry>, backgroundColor: Color) {
             )
             Spacer(modifier = Modifier.height(24.dp))
             WeightLineChart(history)
-        }
-    }
-}
-
-@Composable
-fun WeightLineChart(history: List<WeightEntry>) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-    
-    Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val minWeight = history.minOf { it.weight } - 2
-            val maxWeight = history.maxOf { it.weight } + 2
-            val weightRange = maxWeight - minWeight
-            
-            val width = size.width
-            val height = size.height
-            
-            val points = history.mapIndexed { index, entry ->
-                val x = if (history.size > 1) {
-                    (index.toFloat() / (history.size - 1)) * width
-                } else {
-                    width / 2
-                }
-                val y = height - ((entry.weight.toFloat() - minWeight.toFloat()) / weightRange.toFloat() * height)
-                Offset(x, y)
-            }
-            
-            // Draw path
-            val path = Path().apply {
-                if (points.isNotEmpty()) {
-                    moveTo(points[0].x, points[0].y)
-                    for (i in 1 until points.size) {
-                        lineTo(points[i].x, points[i].y)
-                    }
-                }
-            }
-            
-            drawPath(
-                path = path,
-                color = primaryColor,
-                style = Stroke(width = 3.dp.toPx())
-            )
-            
-            // Draw points
-            points.forEach { point ->
-                drawCircle(
-                    color = primaryColor,
-                    radius = 4.dp.toPx(),
-                    center = point
-                )
-            }
-
-            // Draw labels for min/max
-            drawContext.canvas.nativeCanvas.apply {
-                val paint = android.graphics.Paint().apply {
-                    color = onSurfaceColor.toArgb()
-                    textSize = 30f
-                }
-                drawText("${maxWeight.toInt()} kg", 0f, 30f, paint)
-                drawText("${minWeight.toInt()} kg", 0f, height, paint)
-            }
         }
     }
 }
@@ -747,6 +743,17 @@ fun MacroCircleCard(
                         val strokeWidth = 12.dp.toPx()
                         val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
                         val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                        
+                        // Background circle
+                        drawArc(
+                            color = Color.LightGray.copy(alpha = 0.3f),
+                            startAngle = 0f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(strokeWidth)
+                        )
                         
                         drawArc(
                             color = macroColors.protein,
@@ -1012,11 +1019,12 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
     val yMax = remember(maxDataVal, goal) { (maxDataVal.coerceAtLeast(goal.toFloat()) * 1.3f).coerceAtLeast(1000f) }
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
+    var isGoalSelected by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier
         .fillMaxWidth()
         .height(220.dp)
-        .pointerInput(data, yMax) {
+        .pointerInput(data, yMax, goal) {
             detectTapGestures { offset ->
                 val paddingLeftPx = 40.dp.toPx()
                 val paddingBottomPx = 30.dp.toPx()
@@ -1025,6 +1033,9 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
                 val spacing = if (data.size > 1) chartWidth / (data.size - 1) else chartWidth
                 
                 var foundIndex: Int? = null
+                var goalSelected = false
+                
+                // 1. Check points
                 data.forEachIndexed { index, pair ->
                     val x = paddingLeftPx + index * spacing
                     val y = chartHeight - (pair.second.toFloat() / yMax * chartHeight)
@@ -1035,7 +1046,19 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
                         foundIndex = index
                     }
                 }
+                
+                // 2. Check goal line
+                if (foundIndex == null) {
+                    val goalY = chartHeight - (goal.toFloat() / yMax * chartHeight)
+                    if (abs(offset.y - goalY) < 20.dp.toPx()) {
+                        val xRelative = offset.x - paddingLeftPx
+                        foundIndex = (xRelative / spacing).roundToInt().coerceIn(0, data.size - 1)
+                        goalSelected = true
+                    }
+                }
+                
                 selectedIndex = foundIndex
+                isGoalSelected = goalSelected
             }
         }
     ) {
@@ -1131,7 +1154,7 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
             data.forEachIndexed { index, pair ->
                 val x = paddingLeft + index * spacing
                 val y = getStepY(pair.second.toFloat())
-                val isSelected = selectedIndex == index
+                val isSelected = selectedIndex == index && !isGoalSelected
                 val color = when {
                     pair.second == 0 -> Color.LightGray.copy(0.4f)
                     pair.second < goal * 0.8 -> themeColors.fats
@@ -1147,16 +1170,15 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
 
                 if (isSelected) {
                     drawCircle(
-                        color = Color.White,
-                        radius = 9.dp.toPx(),
-                        center = Offset(x, y),
-                        style = Stroke(width = 2.dp.toPx())
+                        color = color.copy(alpha = 0.3f),
+                        radius = 10.dp.toPx(),
+                        center = Offset(x, y)
                     )
                     
                     drawContext.canvas.nativeCanvas.drawText(
                         "${pair.second} kcal",
                         x,
-                        y - 12.dp.toPx(),
+                        y - 18.dp.toPx(),
                         Paint().apply {
                             this.color = labelColor
                             this.textSize = 12.sp.toPx()
@@ -1178,6 +1200,36 @@ fun CalorieLineChart(summaries: List<DaySummary>, goal: Int, selectedDate: Strin
                     }
                 )
             }
+
+            // Draw selection on goal line
+            if (isGoalSelected && selectedIndex != null) {
+                val x = paddingLeft + selectedIndex!! * spacing
+                val gY = getStepY(goal.toFloat())
+                
+                drawCircle(
+                    color = Color.Gray,
+                    radius = 7.dp.toPx(),
+                    center = Offset(x, gY)
+                )
+                
+                drawCircle(
+                    color = Color.Gray.copy(alpha = 0.3f),
+                    radius = 10.dp.toPx(),
+                    center = Offset(x, gY)
+                )
+                
+                drawContext.canvas.nativeCanvas.drawText(
+                    "$goal kcal",
+                    x,
+                    gY - 18.dp.toPx(),
+                    Paint().apply {
+                        this.color = labelColor
+                        this.textSize = 12.sp.toPx()
+                        this.textAlign = Paint.Align.CENTER
+                        this.isFakeBoldText = true
+                    }
+                )
+            }
         }
     }
 }
@@ -1190,11 +1242,12 @@ fun MacroDetailDialog(
     onDismiss: () -> Unit
 ) {
     val macroColors = LazyCalTheme.colors
-    val total = (protein + carbs + fats).toFloat().coerceAtLeast(1f)
+    val actualTotal = (protein + carbs + fats).toFloat()
+    val calcTotal = actualTotal.coerceAtLeast(1f)
     
-    val pRatio = protein / total
-    val cRatio = carbs / total
-    val fRatio = fats / total
+    val pRatio = protein / calcTotal
+    val cRatio = carbs / calcTotal
+    val fRatio = fats / calcTotal
 
     var selectedMacro by remember { mutableStateOf<String?>(null) }
 
@@ -1231,9 +1284,10 @@ fun MacroDetailDialog(
                                     val cAngle = cRatio * 360f
                                     
                                     selectedMacro = when {
-                                        adjustedAngle < pAngle -> "Protein"
-                                        adjustedAngle < pAngle + cAngle -> "Carbs"
-                                        else -> "Fats"
+                                        pRatio > 0f && adjustedAngle < pAngle -> "Protein"
+                                        cRatio > 0f && adjustedAngle < pAngle + cAngle -> "Carbs"
+                                        fRatio > 0f -> "Fats"
+                                        else -> null
                                     }
                                 } else {
                                     selectedMacro = null
@@ -1244,6 +1298,17 @@ fun MacroDetailDialog(
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val baseStrokeWidth = 35.dp.toPx()
                         val highlightStrokeWidth = 45.dp.toPx()
+                        
+                        // Background circle
+                        drawArc(
+                            color = Color.LightGray.copy(alpha = 0.3f),
+                            startAngle = 0f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            topLeft = Offset(highlightStrokeWidth / 2, highlightStrokeWidth / 2),
+                            size = Size(size.width - highlightStrokeWidth, size.height - highlightStrokeWidth),
+                            style = Stroke(baseStrokeWidth)
+                        )
                         
                         fun drawMacroArc(color: Color, startAngle: Float, sweepAngle: Float, isSelected: Boolean) {
                             val currentStroke = if (isSelected) highlightStrokeWidth else baseStrokeWidth
@@ -1292,7 +1357,7 @@ fun MacroDetailDialog(
                             Text(quad.value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                             Text("${(quad.ratio * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
                         } else {
-                            Text("${total.toInt()}", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                            Text("${actualTotal.toInt()}", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                             Text("total grams", style = MaterialTheme.typography.labelMedium)
                             Text("Tap a section", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                         }

@@ -31,7 +31,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -44,6 +43,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.core.graphics.scale
 
 sealed class ChatState {
     object CheckingModel : ChatState()
@@ -103,7 +103,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<ChatState> = _uiState.asStateFlow()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val todayId = dateFormat.format(Date())
+    
+    private val _todayId = MutableStateFlow(dateFormat.format(Date()))
+    val todayIdFlow: StateFlow<String> = _todayId.asStateFlow()
+    val todayId: String get() = _todayId.value
 
     private val _selectedDay = MutableStateFlow(todayId)
     val selectedDay: StateFlow<String> = _selectedDay.asStateFlow()
@@ -112,8 +115,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _maxSelectedDay = MutableStateFlow(todayId)
 
     private val _isForcedEditMode = MutableStateFlow(false)
-    val isReadOnly: StateFlow<Boolean> = combine(_selectedDay, _isForcedEditMode) { day, forced ->
-        day != todayId && !forced
+    val isReadOnly: StateFlow<Boolean> = combine(_selectedDay, _isForcedEditMode, _todayId) { day, forced, today ->
+        day != today && !forced
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun toggleEditMode() {
@@ -266,7 +269,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         checkModel()
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
-        
+
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(
             application,
@@ -274,8 +277,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             filter,
             ContextCompat.RECEIVER_EXPORTED
         )
-    }
 
+        // Update todayId periodically (every minute)
+        viewModelScope.launch {
+            while (true) {
+                val currentToday = dateFormat.format(Date())
+                if (_todayId.value != currentToday) {
+                    _todayId.value = currentToday
+                }
+                kotlinx.coroutines.delay(60000)
+            }
+        }
+    }
     fun selectDay(dayId: String) {
         _selectedDay.value = dayId
         if (dayId < _minSelectedDay.value) _minSelectedDay.value = dayId
@@ -507,14 +520,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 // Pre-process and resize image to target resolution (720x880) to reduce GPU preprocessing lag
-                val processedImagePath = withContext(Dispatchers.Default) {
+                val processedImagePath = withContext(Dispatchers.IO) {
                     try {
                         val originalFile = File(imagePath)
                         val options = BitmapFactory.Options()
                         val bitmap = BitmapFactory.decodeFile(originalFile.absolutePath, options)
                         if (bitmap != null) {
                             // Model target is approx 720x880 as seen in logs
-                            val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 720, 880, true)
+                            val resizedBitmap = bitmap.scale(720, 880)
                             val outFile = File(getApplication<Application>().externalCacheDir, "processed_inference.jpg")
                             FileOutputStream(outFile).use { out ->
                                 resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
@@ -578,6 +591,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun sendMessage(text: String) {
         if (isReadOnly.value || _isProcessing.value) return
 
+        val caloriesInput = text.trim().toIntOrNull()
+        if (caloriesInput != null) {
+            if (caloriesInput !in 0..10000) {
+                _inputErrorMessage.value = "Please enter a valid calorie amount between 0 and 10000."
+                return
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val entry = FoodEntry(
+                        foodName = "Quick Entry",
+                        amount = "",
+                        calories = caloriesInput,
+                        protein = 0,
+                        carbs = 0,
+                        fats = 0,
+                        dayId = _selectedDay.value,
+                        originalInput = "Direct Input: $caloriesInput"
+                    )
+                    foodDao.insert(entry)
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        _inputErrorMessage.value = "Failed to save entry: ${e.message}"
+                    }
+                }
+            }
+            return
+        }
+
         if (!isPromptSafe(text)) {
             _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
             return
@@ -632,7 +673,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun parseAndSave(jsonString: String, originalInput: String) = withContext(Dispatchers.Default) {
         try {
-            // Find the bounds of the JSON content to ignore noise or markdown
+            // Find the bounds of the JSON content to ignore noise or Markdown
             val startIndex = jsonString.indexOfFirst { it == '[' || it == '{' }
             val endIndex = jsonString.indexOfLast { it == ']' || it == '}' }
 

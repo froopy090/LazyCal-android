@@ -139,8 +139,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     context.applicationContext,
                     ChatDatabase::class.java,
                     "lazycal_database"
-                )
-                .fallbackToDestructiveMigration()
+                ).fallbackToDestructiveMigration(false)
                 .build()
                 INSTANCE = instance
                 instance

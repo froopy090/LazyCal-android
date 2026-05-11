@@ -1,9 +1,11 @@
 package com.francescocanossi.lazycal.screens
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.TimeZone
+import java.util.Date
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +71,43 @@ fun FoodDetailScreen(
         )
     }
     val keyboardController = LocalSoftwareKeyboardController.current
+    
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = remember(entry.dayId) {
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                sdf.timeZone = TimeZone.getTimeZone("UTC")
+                sdf.parse(entry.dayId)?.time
+            } catch (_: Exception) {
+                null
+            }
+        }
+    )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = Date(millis)
+                        val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+                        viewModel.updateEntry(entry.copy(dayId = formatted))
+                    }
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 
     showEditDialog?.let { field ->
         val isNumeric = field != EditField.NAME && field != EditField.AMOUNT
@@ -123,30 +165,6 @@ fun FoodDetailScreen(
         )
     }
 
-    if (showDatePicker) {
-        val calendar = java.util.Calendar.getInstance()
-        val parts = entry.dayId.split("-")
-        if (parts.size == 3) {
-            calendar.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
-        }
-        
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val newDayId = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
-                viewModel.updateEntry(entry.copy(dayId = newDayId))
-                showDatePicker = false
-            },
-            calendar.get(java.util.Calendar.YEAR),
-            calendar.get(java.util.Calendar.MONTH),
-            calendar.get(java.util.Calendar.DAY_OF_MONTH)
-        ).apply {
-            setOnDismissListener { showDatePicker = false }
-            show()
-        }
-        showDatePicker = false // Reset after showing
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -192,7 +210,7 @@ fun FoodDetailScreen(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_settings),
                         contentDescription = "Edit Name",
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                         modifier = Modifier.height(20.dp)
                     )
                 }
@@ -215,7 +233,7 @@ fun FoodDetailScreen(
                         Text("Calories", style = MaterialTheme.typography.bodyMedium)
                         Text("${entry.calories} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                    Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f))
                 }
             }
 
@@ -259,7 +277,7 @@ fun DetailRow(label: String, value: String, onEdit: (() -> Unit)? = null) {
                     painter = painterResource(id = R.drawable.ic_settings),
                     contentDescription = "Edit $label",
                     modifier = Modifier.padding(start = 8.dp).height(16.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
                 )
             }
         }

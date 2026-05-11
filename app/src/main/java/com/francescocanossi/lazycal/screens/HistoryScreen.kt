@@ -36,15 +36,16 @@ fun HistoryScreen(
     val archivedDays by chatViewModel.archivedDays.collectAsState()
     val selectedDay by chatViewModel.selectedDay.collectAsState()
     val isReadOnly by chatViewModel.isReadOnly.collectAsState()
+    val todayId by chatViewModel.todayIdFlow.collectAsState()
 
-    val categorizedDays = remember(archivedDays) {
+    val categorizedDays = remember(archivedDays, todayId) {
         val weekAgo = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }.time
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         
         val thisWeek = mutableListOf<DaySummary>()
         val older = mutableListOf<DaySummary>()
         
-        archivedDays.filter { it.dayId != chatViewModel.todayId }.forEach { summary ->
+        archivedDays.filter { it.dayId != todayId }.forEach { summary ->
             try {
                 val date = sdf.parse(summary.dayId)
                 if (date != null && date.after(weekAgo)) {

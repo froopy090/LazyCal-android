@@ -85,12 +85,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.francescocanossi.lazycal.ChatViewModel
-import androidx.compose.material3.DatePickerState
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -99,7 +96,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import java.util.TimeZone
 import com.francescocanossi.lazycal.DaySummary
-import com.francescocanossi.lazycal.WeightEntry
 import com.francescocanossi.lazycal.FoodEntry
 import com.francescocanossi.lazycal.R
 import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
@@ -111,6 +107,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import androidx.compose.ui.platform.LocalLocale
 
 @Composable
 fun WelcomeScreen(isOnline: Boolean, onDownloadClick: () -> Unit) {
@@ -174,7 +171,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val selectedDay by viewModel.selectedDay.collectAsState()
     val archivedDays by viewModel.archivedDays.collectAsState()
     val weightHistory by viewModel.weightHistory.collectAsState()
-    val todayId = viewModel.todayId
+    val todayId by viewModel.todayIdFlow.collectAsState()
 
     val daysWithData = remember(archivedDays, weightHistory) {
         (archivedDays.map { it.dayId } + weightHistory.map { it.dayId }).toSet()
@@ -190,17 +187,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val portraitListState = rememberLazyListState()
     val landscapeListState = rememberLazyListState()
     
-    val isPortraitAtTop by remember {
-        derivedStateOf {
-            portraitListState.firstVisibleItemIndex == 0 && portraitListState.firstVisibleItemScrollOffset == 0
-        }
-    }
-    val isLandscapeAtTop by remember {
-        derivedStateOf {
-            landscapeListState.firstVisibleItemIndex == 0 && landscapeListState.firstVisibleItemScrollOffset == 0
-        }
-    }
-
     var isCalorieBoxVisible by remember { mutableStateOf(true) }
 
     val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
@@ -323,8 +309,8 @@ fun ChatScreen(viewModel: ChatViewModel) {
                                 .fillMaxWidth()
                                 .padding(top = 0.dp),
                             contentPadding = PaddingValues(
-                                top = if (isLandscapeAtTop) 8.dp else 0.dp,
-                                bottom = 84 .dp,
+                                top = 8.dp,
+                                bottom = 84.dp,
                                 start = 0.dp,
                                 end = 0.dp
                             ),
@@ -390,7 +376,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                             .weight(1f)
                             .fillMaxWidth(),
                         contentPadding = PaddingValues(
-                            top = if (isPortraitAtTop) 8.dp else 0.dp,
+                            top = 8.dp,
                             bottom = 84.dp,
                             start = 0.dp,
                             end = 0.dp
@@ -405,29 +391,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
                                 isReadOnly = isReadOnly
                             )
                         }
-                    }
-                }
-            }
-
-            if (!isReadOnly && selectedDay != todayId) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 24.dp, bottom = 100.dp)
-                        .size(40.dp)
-                        .clickable { viewModel.toggleEditMode() },
-                    shape = CircleShape,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.secondaryContainer
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Fine modifica",
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                 }
             }
@@ -454,123 +417,152 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     }
                 }
             } else if (!isReadOnly || isProcessing) {
-                Surface(
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .fillMaxWidth()
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        tonalElevation = 6.dp,
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface
                     ) {
-                        if (isProcessing) {
-                            val messages = remember {
-                                listOf(
-                                    "Calculating your calories...",
-                                    "AI is running locally on device, this may take a while.",
-                                    "Hint: Being specific with portions leads to better results.",
-                                    "Hint: If you already know the calories, just include them!",
-                                    "Did you know? Accuracy is highest when you specify weights.",
-                                    "Tip: You can tap on the food entry to manually modify values."
+                        Column(
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .fillMaxWidth()
+                        ) {
+                            if (isProcessing) {
+                                val messages = remember {
+                                    listOf(
+                                        "Calculating your calories...",
+                                        "AI is running locally on device, this may take a while.",
+                                        "Hint: Being specific with portions leads to better results.",
+                                        "Hint: If you already know the calories, just include them!",
+                                        "Did you know? Accuracy is highest when you specify weights.",
+                                        "Tip: You can tap on the food entry to manually modify values."
+                                    )
+                                }
+                                var messageIndex by remember { mutableIntStateOf(0) }
+                                LaunchedEffect(Unit) {
+                                    while (true) {
+                                        delay(2500)
+                                        messageIndex = (messageIndex + 1) % messages.size
+                                    }
+                                }
+                                Text(
+                                    text = messages[messageIndex],
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    textAlign = TextAlign.Center
                                 )
                             }
-                            var messageIndex by remember { mutableStateOf(0) }
-                            LaunchedEffect(Unit) {
-                                while (true) {
-                                    delay(2500)
-                                    messageIndex = (messageIndex + 1) % messages.size
-                                }
-                            }
-                            Text(
-                                text = messages[messageIndex],
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        }
 
-                        if (!isReadOnly) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 0.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextField(
-                                    value = inputText,
-                                    onValueChange = { inputText = it },
-                                    modifier = Modifier.weight(1f),
-                                    placeholder = {
-                                        Text(
-                                            "What did you eat?",
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    },
-                                    enabled = !isProcessing,
-                                    singleLine = true,
-                                    shape = MaterialTheme.shapes.large,
-                                    textStyle = MaterialTheme.typography.bodyMedium,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent,
-                                        disabledIndicatorColor = Color.Transparent
-                                    )
-                                )
-                                IconButton(
-                                    onClick = {
-                                        val permissionCheckResult =
-                                            ContextCompat.checkSelfPermission(
-                                                context,
-                                                Manifest.permission.CAMERA
+                            if (!isReadOnly) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 0.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextField(
+                                        value = inputText,
+                                        onValueChange = { inputText = it },
+                                        modifier = Modifier.weight(1f),
+                                        placeholder = {
+                                            Text(
+                                                "What did you eat?",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
-                                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                                            cameraLauncher.launch(imageUri)
-                                        } else {
-                                            permissionLauncher.launch(Manifest.permission.CAMERA)
-                                        }
-                                    },
-                                    enabled = !isProcessing
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhotoCamera,
-                                        contentDescription = "Camera"
+                                        },
+                                        enabled = !isProcessing,
+                                        singleLine = true,
+                                        shape = MaterialTheme.shapes.large,
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent,
+                                            disabledContainerColor = Color.Transparent,
+                                            focusedIndicatorColor = Color.Transparent,
+                                            unfocusedIndicatorColor = Color.Transparent,
+                                            disabledIndicatorColor = Color.Transparent
+                                        )
                                     )
+                                    IconButton(
+                                        onClick = {
+                                            val permissionCheckResult =
+                                                ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.CAMERA
+                                                )
+                                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                                cameraLauncher.launch(imageUri)
+                                            } else {
+                                                permissionLauncher.launch(Manifest.permission.CAMERA)
+                                            }
+                                        },
+                                        enabled = !isProcessing
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PhotoCamera,
+                                            contentDescription = "Camera"
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { galleryLauncher.launch("image/*") },
+                                        enabled = !isProcessing
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Image,
+                                            contentDescription = "Gallery"
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            if (inputText.isNotBlank()) {
+                                                viewModel.sendMessage(inputText)
+                                                inputText = ""
+                                            }
+                                        },
+                                        enabled = !isProcessing
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_send),
+                                            contentDescription = "Send"
+                                        )
+                                    }
                                 }
-                                IconButton(
-                                    onClick = { galleryLauncher.launch("image/*") },
-                                    enabled = !isProcessing
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Image,
-                                        contentDescription = "Gallery"
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (inputText.isNotBlank()) {
-                                            viewModel.sendMessage(inputText)
-                                            inputText = ""
-                                        }
-                                    },
-                                    enabled = !isProcessing
-                                ) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_send),
-                                        contentDescription = "Send"
-                                    )
-                                }
+                            }
+                        }
+                    }
+
+                    if (!isReadOnly && selectedDay != todayId) {
+                        Surface(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clickable { viewModel.toggleEditMode() },
+                            shape = CircleShape,
+                            tonalElevation = 6.dp,
+                            shadowElevation = 8.dp,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "End edit",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(24.dp)
+                                )
                             }
                         }
                     }
@@ -591,7 +583,7 @@ fun WeeklyTracker(
     onDayClick: (String) -> Unit,
     onResetClick: () -> Unit
 ) {
-    val todayId = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date()) }
+    val todayId = SimpleDateFormat("yyyy-MM-dd", LocalLocale.current.platformLocale).format(java.util.Date())
     var showDatePicker by remember { mutableStateOf(false) }
     
     // Calculate page count and initial page
@@ -956,7 +948,7 @@ fun FoodEntryItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable(enabled = !isReadOnly) { onClick() }
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

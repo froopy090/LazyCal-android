@@ -275,7 +275,7 @@ fun SettingsScreen(
                         Text("Daily Calorie Goal", style = MaterialTheme.typography.bodyMedium)
                         Text("${userConfig.dailyCalorieGoal} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         userConfig.activityLevel?.let {
-                            Text("Activity: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Icon(painterResource(id = R.drawable.ic_settings), contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)

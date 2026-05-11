@@ -87,9 +87,9 @@ class CsvManager(
                                         "Age" -> currentUserConfig.copy(age = value.toIntOrNull())
                                         "Weight" -> currentUserConfig.copy(weight = value.toDoubleOrNull())
                                         "Height" -> currentUserConfig.copy(height = value.toDoubleOrNull())
-                                        "Gender" -> currentUserConfig.copy(gender = if (value.isBlank()) null else value)
+                                        "Gender" -> currentUserConfig.copy(gender = value.ifBlank { null })
                                         "Goal" -> currentUserConfig.copy(dailyCalorieGoal = value.toIntOrNull() ?: currentUserConfig.dailyCalorieGoal)
-                                        "Activity" -> currentUserConfig.copy(activityLevel = if (value.isBlank()) null else value)
+                                        "Activity" -> currentUserConfig.copy(activityLevel = value.ifBlank { null })
                                         else -> currentUserConfig
                                     }
                                 }

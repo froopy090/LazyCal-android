@@ -212,9 +212,6 @@ class MainActivity : ComponentActivity() {
                                             label = { Text(tab.title) },
                                             selected = pagerState.currentPage == index,
                                             onClick = {
-                                                if (tab == TabItem.Tracker) {
-                                                    chatViewModel.resetToToday()
-                                                }
                                                 scope.launch { pagerState.animateScrollToPage(index) }
                                             }
                                         )
