@@ -20,7 +20,10 @@ class ModelManager(private val context: Context) {
 
     private var downloadId: Long = -1
 
-    fun isModelDownloaded(): Boolean = modelFile.exists()
+    fun isModelDownloaded(): Boolean {
+        // Gemma 2B is ~2.6GB. Check if it's at least 2GB to avoid loading truncated files
+        return modelFile.exists() && modelFile.length() > 2_000_000_000L
+    }
 
     fun downloadModel(): Long {
         if (isModelDownloaded()) return -1

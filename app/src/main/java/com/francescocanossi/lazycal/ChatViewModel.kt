@@ -238,10 +238,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun retry() {
-        if (modelManager.isModelDownloaded()) {
-            initializeEngine()
-        } else {
-            startDownload()
+        viewModelScope.launch {
+            if (modelManager.isModelDownloaded()) {
+                _uiState.value = ChatState.CheckingModel
+                ensureEngineInitialized()
+            } else {
+                // If model download check fails (e.g. truncated file), clear it and start fresh
+                modelManager.deleteModel()
+                startDownload()
+            }
         }
     }
 
@@ -279,10 +284,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun ensureEngineInitialized() {
-        if (engine != null && conversation != null) return
+        // Restore from cache if available
+        if (engine == null && cachedEngine != null) {
+            engine = cachedEngine
+            conversation = cachedConversation
+        }
 
-        initializationJob?.join()
-        if (engine != null && conversation != null) return
+        if (engine != null && conversation != null) {
+            if (_uiState.value != ChatState.Ready) _uiState.value = ChatState.Ready
+            return
+        }
+
+        // Clear previous failed job if necessary
+        if (initializationJob?.isCompleted == true && engine == null) {
+            initializationJob = null
+        }
 
         initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -297,16 +313,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     Engine(engineConfig).also { it.initialize() }
                 }
-                
+
                 val conversationConfig = ConversationConfig(
                     systemInstruction = Contents.of(systemInstruction)
                 )
                 val conversationInstance = engineInstance.createConversation(conversationConfig)
-                
+
                 engine = engineInstance
                 conversation = conversationInstance
                 cachedEngine = engineInstance
                 cachedConversation = conversationInstance
+
+                withContext(Dispatchers.Main) {
+                    _uiState.value = ChatState.Ready
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
@@ -314,10 +334,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         initializationJob?.join()
-    }
-
-    private fun initializeEngine() {
-        // No longer used for immediate initialization
     }
 
     companion object {
