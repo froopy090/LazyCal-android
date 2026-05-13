@@ -363,6 +363,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendImage(imagePath: String) {
         if (_isProcessing.value) return
+        val targetDayId = _selectedDay.value
 
         viewModelScope.launch(Dispatchers.IO) {
             _isProcessing.value = true
@@ -428,7 +429,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _inputErrorMessage.value = "Empty response from AI. Try again."
                     }
                 } else {
-                    parseAndSave(finalResponse, "Image Analysis")
+                    parseAndSave(finalResponse, "Image Analysis", targetDayId)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -442,6 +443,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(text: String) {
         if (_isProcessing.value) return
+        val targetDayId = _selectedDay.value
 
         if (!isPromptSafe(text)) {
             _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
@@ -483,7 +485,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _inputErrorMessage.value = "Empty response from AI. Try again."
                     }
                 } else {
-                    parseAndSave(finalResponse, text)
+                    parseAndSave(finalResponse, text, targetDayId)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -495,7 +497,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun parseAndSave(jsonString: String, originalInput: String) = withContext(Dispatchers.Default) {
+    private suspend fun parseAndSave(jsonString: String, originalInput: String, targetDayId: String) = withContext(Dispatchers.Default) {
         try {
             // Find the bounds of the JSON content to ignore noise or markdown
             val startIndex = jsonString.indexOfFirst { it == '[' || it == '{' }
@@ -512,7 +514,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 var savedCount = 0
                 for (i in 0 until array.length()) {
                     val item = array.getJSONObject(i)
-                    if (saveEntry(item, originalInput)) {
+                    if (saveEntry(item, originalInput, targetDayId)) {
                         savedCount++
                     }
                 }
@@ -521,7 +523,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 val json = JSONObject(cleanJson)
-                if (!saveEntry(json, originalInput)) {
+                if (!saveEntry(json, originalInput, targetDayId)) {
                     if (json.has("error")) {
                         showInputError("AI couldn't parse that. Try being more specific.")
                     } else {
@@ -534,7 +536,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun saveEntry(json: JSONObject, originalInput: String): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun saveEntry(json: JSONObject, originalInput: String, targetDayId: String): Boolean = withContext(Dispatchers.IO) {
         if (json.has("error")) return@withContext false
         
         return@withContext try {
@@ -560,7 +562,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 protein = protein,
                 carbs = carbs,
                 fats = fats,
-                dayId = selectedDay.value,
+                dayId = targetDayId,
                 originalInput = originalInput
             )
             foodDao.insert(entry)
