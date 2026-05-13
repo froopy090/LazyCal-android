@@ -280,7 +280,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 var messageIndex by remember { mutableStateOf(0) }
                 LaunchedEffect(Unit) {
                     while (true) {
-                        delay(2500)
+                        delay(4000)
                         messageIndex = (messageIndex + 1) % messages.size
                     }
                 }
