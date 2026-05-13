@@ -275,11 +275,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             cachedConversation = null
             cachedEngine = null
             modelManager.deleteModel()
-            foodDao.deleteAll()
             withContext(Dispatchers.Main) {
                 _uiState.value = ChatState.ModelMissing
                 _inputErrorMessage.value = null
             }
+        }
+    }
+
+    fun deleteLogs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.deleteAll()
         }
     }
 
@@ -555,7 +560,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 protein = protein,
                 carbs = carbs,
                 fats = fats,
-                dayId = todayId,
+                dayId = selectedDay.value,
                 originalInput = originalInput
             )
             foodDao.insert(entry)

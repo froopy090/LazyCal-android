@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import android.content.res.Configuration
@@ -131,7 +133,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val entries by viewModel.foodEntries.collectAsState()
     val dailyTotal by viewModel.dailyTotal.collectAsState()
     val userConfig by viewModel.userConfig.collectAsState()
-    val isReadOnly by viewModel.isReadOnly.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
     val weeklySummaries by viewModel.weeklySummaries.collectAsState()
     val selectedDay by viewModel.selectedDay.collectAsState()
@@ -227,8 +228,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                             FoodEntryItem(
                                 entry = entry,
                                 onDelete = { viewModel.deleteEntry(entry) },
-                                onClick = { viewModel.showDetail(entry) },
-                                isReadOnly = isReadOnly
+                                onClick = { viewModel.showDetail(entry) }
                             )
                         }
                     }
@@ -260,8 +260,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         FoodEntryItem(
                             entry = entry,
                             onDelete = { viewModel.deleteEntry(entry) },
-                            onClick = { viewModel.showDetail(entry) },
-                            isReadOnly = isReadOnly
+                            onClick = { viewModel.showDetail(entry) }
                         )
                     }
                 }
@@ -295,60 +294,58 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     textAlign = TextAlign.Center
                 )
             }
-            if (!isReadOnly) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("What did you eat?") },
+                    enabled = !isProcessing,
+                    singleLine = true
+                )
+                IconButton(
+                    onClick = {
+                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                            cameraLauncher.launch(imageUri)
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                    enabled = !isProcessing
                 ) {
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("What did you eat?") },
-                        enabled = !isProcessing,
-                        singleLine = true
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = "Camera"
                     )
-                    IconButton(
-                        onClick = {
-                            val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                                cameraLauncher.launch(imageUri)
-                            } else {
-                                permissionLauncher.launch(Manifest.permission.CAMERA)
-                            }
-                        },
-                        enabled = !isProcessing
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PhotoCamera,
-                            contentDescription = "Camera"
-                        )
-                    }
-                    IconButton(
-                        onClick = { galleryLauncher.launch("image/*") },
-                        enabled = !isProcessing
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "Gallery"
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                viewModel.sendMessage(inputText)
-                                inputText = ""
-                            }
-                        },
-                        enabled = !isProcessing
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_send),
-                            contentDescription = "Send"
-                        )
-                    }
+                }
+                IconButton(
+                    onClick = { galleryLauncher.launch("image/*") },
+                    enabled = !isProcessing
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = "Gallery"
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        if (inputText.isNotBlank()) {
+                            viewModel.sendMessage(inputText)
+                            inputText = ""
+                        }
+                    },
+                    enabled = !isProcessing
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_send),
+                        contentDescription = "Send"
+                    )
                 }
             }
         }
@@ -386,6 +383,10 @@ fun WeeklyTracker(
                 modifier = Modifier
                     .clip(CircleShape)
                     .clickable { onDayClick(summary.dayId) }
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                        else Color.Transparent
+                    )
                     .padding(4.dp)
             ) {
                 Box(
@@ -401,6 +402,7 @@ fun WeeklyTracker(
                     }
                     val isOverGoal = summary.totalCalories > calorieGoal
                     val color = if (isOverGoal) LazyCalTheme.colors.error else MaterialTheme.colorScheme.primary
+                    val strokeWidth = if (isSelected) 3.dp else 2.dp
                     
                     Canvas(modifier = Modifier.size(36.dp)) {
                         drawArc(
@@ -408,14 +410,14 @@ fun WeeklyTracker(
                             startAngle = 0f,
                             sweepAngle = 360f,
                             useCenter = false,
-                            style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                            style = Stroke(width = strokeWidth.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
                         )
                         drawArc(
                             color = color,
                             startAngle = -90f,
                             sweepAngle = 360f * progress,
                             useCenter = false,
-                            style = Stroke(width = 2.dp.toPx())
+                            style = Stroke(width = strokeWidth.toPx())
                         )
                     }
                     Text(
@@ -429,7 +431,7 @@ fun WeeklyTracker(
                 Text(
                     text = dayOfMonth.toString(),
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Normal,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -499,8 +501,7 @@ fun CalorieSummaryCard(
 fun FoodEntryItem(
     entry: FoodEntry,
     onDelete: () -> Unit,
-    onClick: () -> Unit,
-    isReadOnly: Boolean
+    onClick: () -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -553,14 +554,12 @@ fun FoodEntryItem(
                 fontWeight = FontWeight.Bold
             )
             
-            if (!isReadOnly) {
-                IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_delete),
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                    )
-                }
+            IconButton(onClick = { showDeleteConfirm = true }) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_delete),
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                )
             }
         }
     }

@@ -61,8 +61,8 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     var showGoalDialog by remember { mutableStateOf(false) }
     var tempGoal by remember { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
     
-    var showBackupPrompt by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showDeleteModelDialog by remember { mutableStateOf(false) }
+    var showDeleteLogsDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -129,48 +129,52 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
         )
     }
 
-    if (showBackupPrompt) {
+    if (showDeleteLogsDialog) {
         AlertDialog(
-            onDismissRequest = { showBackupPrompt = false },
+            onDismissRequest = { showDeleteLogsDialog = false },
             title = { Text("Backup your data?") },
-            text = { Text("Would you like to export your entries as a CSV file before deleting everything?") },
+            text = { Text("Would you like to export your entries as a CSV file before deleting your food logs?") },
             confirmButton = {
-                TextButton(onClick = { showBackupPrompt = false }) {
+                TextButton(onClick = {
+                    exportLauncher.launch("lazycal_backup.csv")
+                    showDeleteLogsDialog = false
+                }) {
                     Text("Yes, let me export")
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showBackupPrompt = false
-                        showDeleteDialog = true
-                    }
+                        viewModel.deleteLogs()
+                        showDeleteLogsDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("No, I've already backed up")
+                    Text("No, delete logs")
                 }
             }
         )
     }
 
-    if (showDeleteDialog) {
+    if (showDeleteModelDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Data and Model?") },
-            text = { Text("This will permanently delete all your food entries and the AI model. This action cannot be undone.") },
+            onDismissRequest = { showDeleteModelDialog = false },
+            title = { Text("Delete AI Model?") },
+            text = { Text("This will permanently delete the AI model (2.58 GB). You will need to download it again to use the app.") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.deleteModel()
-                        showDeleteDialog = false
+                        showDeleteModelDialog = false
                         onBack()
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete Everything")
+                    Text("Delete Model")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(onClick = { showDeleteModelDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -329,7 +333,25 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(8.dp))
             Text("Danger Zone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Button(onClick = { showBackupPrompt = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete AI Model and Data") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { showDeleteModelDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Model")
+                }
+                Button(
+                    onClick = { showDeleteLogsDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Logs")
+                }
+            }
         }
     }
 }
