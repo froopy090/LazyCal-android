@@ -362,7 +362,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendImage(imagePath: String) {
-        if (_selectedDay.value != todayId || _isProcessing.value) return
+        if (_isProcessing.value) return
 
         viewModelScope.launch(Dispatchers.IO) {
             _isProcessing.value = true
@@ -441,7 +441,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendMessage(text: String) {
-        if (_selectedDay.value != todayId || _isProcessing.value) return
+        if (_isProcessing.value) return
 
         if (!isPromptSafe(text)) {
             _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
