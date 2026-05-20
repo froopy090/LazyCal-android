@@ -55,7 +55,7 @@ import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 
 enum class TabItem(val title: String, val iconRes: Int) {
     Tracker("Tracker", R.drawable.ic_tracker),
-    Saved("Saved", R.drawable.ic_star),
+    Saved("Saved", R.drawable.ic_bookmark),
     Progress("Progress", R.drawable.ic_progress),
     History("History", R.drawable.ic_history)
 }

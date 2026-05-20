@@ -638,7 +638,7 @@ fun FoodEntryItem(
                             onSaveToCatalogue()
                             showMenu = false
                         },
-                        leadingIcon = { Icon(painterResource(id = R.drawable.ic_star), contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        leadingIcon = { Icon(painterResource(id = R.drawable.ic_bookmark_add), contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
                     DropdownMenuItem(
                         text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
