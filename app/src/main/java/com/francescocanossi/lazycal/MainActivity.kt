@@ -159,7 +159,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
-                            if (uiState == ChatState.Ready) {
+                            if (uiState != ChatState.CheckingModel && uiState !is ChatState.Error) {
                                 TopAppBar(
                                     title = {
                                         Text(
@@ -180,7 +180,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         bottomBar = {
-                            if (uiState == ChatState.Ready) {
+                            if (uiState != ChatState.CheckingModel && uiState !is ChatState.Error) {
                                 NavigationBar {
                                     tabs.forEachIndexed { index, tab ->
                                         NavigationBarItem(
@@ -208,7 +208,7 @@ class MainActivity : ComponentActivity() {
                                 when (uiState) {
                                 ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 ChatState.ModelMissing -> {
-                                    if (userConfig.launchCount <= 1) {
+                                    if (userConfig.launchCount <= 1 && totalEntriesCount == 0) {
                                         WelcomeScreen(isOnline = isOnline, onDownloadClick = { chatViewModel.startDownload() })
                                     } else {
                                         // Show Tracker screen even if model is missing for returning users
@@ -238,7 +238,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                                 ChatState.Downloading -> {
-                                    if (userConfig.launchCount <= 1) {
+                                    if (userConfig.launchCount <= 1 && totalEntriesCount == 0) {
                                         DownloadingScreen()
                                     } else {
                                         // Same as above, show UI while downloading in background
