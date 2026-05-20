@@ -28,6 +28,10 @@ class CsvManager(private val foodDao: FoodDao) {
             
             // Skip header
             val dataLines = lines.drop(1).filter { it.isNotBlank() }
+            if (dataLines.isEmpty()) return@withContext false
+
+            // Wipe existing logs before importing
+            foodDao.deleteAll()
             
             dataLines.forEach { line ->
                 val parts = parseCsvLine(line)

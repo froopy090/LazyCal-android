@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.francescocanossi.lazycal.ChatState
 import com.francescocanossi.lazycal.ChatViewModel
 import com.francescocanossi.lazycal.R
 import kotlinx.coroutines.launch
@@ -59,6 +60,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     val userConfigNullable by viewModel.userConfig.collectAsState()
     val userConfig = userConfigNullable ?: return
+    val uiState by viewModel.uiState.collectAsState()
 
     var showGoalDialog by remember { mutableStateOf(false) }
     var tempGoal by remember(userConfig) { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
@@ -66,6 +68,9 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     var showDeleteModelDialog by remember { mutableStateOf(false) }
     var showDeleteLogsDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var tempImportData by remember { mutableStateOf("") }
+    
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -90,7 +95,8 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             scope.launch {
                 context.contentResolver.openInputStream(selectedUri)?.use { input ->
                     val csvData = input.bufferedReader().use { reader -> reader.readText() }
-                    viewModel.importFromCSV(csvData)
+                    tempImportData = csvData
+                    showImportDialog = true
                 }
             }
         }
@@ -177,6 +183,32 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteModelDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("Overwrite existing logs?") },
+            text = { Text("Importing data will delete all your current food logs and replace them with the data from the CSV file. This action cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            viewModel.importFromCSV(tempImportData)
+                            showImportDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Overwrite and Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -299,10 +331,18 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         }
                         Switch(
                             checked = userConfig.useGpu,
-                            onCheckedChange = { viewModel.toggleGpu(it) }
+                            onCheckedChange = { viewModel.toggleGpu(it) },
+                            enabled = uiState is ChatState.Ready
                         )
                     }
-                    if (userConfig.useGpu) {
+                    if (uiState !is ChatState.Ready) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "AI Engine must be ready to change acceleration settings.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    } else if (userConfig.useGpu) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "Note: GPU acceleration significantly improves text processing speed but is currently incompatible with image analysis. Camera and gallery options will be disabled.",
