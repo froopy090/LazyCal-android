@@ -24,12 +24,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +67,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.francescocanossi.lazycal.ChatState
 import com.francescocanossi.lazycal.ChatViewModel
 import com.francescocanossi.lazycal.DaySummary
 import com.francescocanossi.lazycal.FoodEntry
@@ -134,6 +139,8 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val dailyTotal by viewModel.dailyTotal.collectAsState()
     val userConfig by viewModel.userConfig.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val isOnline by viewModel.isOnline.collectAsState()
     val weeklySummaries by viewModel.weeklySummaries.collectAsState()
     val selectedDay by viewModel.selectedDay.collectAsState()
     var inputText by remember { mutableStateOf("") }
@@ -143,6 +150,10 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scrollState = rememberScrollState()
+
+    val isModelMissing = uiState is ChatState.ModelMissing
+    val isDownloading = uiState is ChatState.Downloading
+    val isReady = uiState is ChatState.Ready
 
     val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
     val imageUri = remember {
@@ -192,6 +203,44 @@ fun ChatScreen(viewModel: ChatViewModel) {
         val maxWidth = this.maxWidth
 
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            if (isModelMissing || isDownloading) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (isDownloading) "Downloading Model..." else "AI Model Missing",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                if (isDownloading) "The AI engine will be ready shortly." else "Download the AI model to enable smart logging.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        if (!isDownloading) {
+                            Button(
+                                onClick = { viewModel.startDownload() },
+                                enabled = isOnline,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Download")
+                            }
+                        } else {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                }
+            }
+
             if (isLandscape) {
                 Row(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -228,6 +277,8 @@ fun ChatScreen(viewModel: ChatViewModel) {
                             FoodEntryItem(
                                 entry = entry,
                                 onDelete = { viewModel.deleteEntry(entry) },
+                                onDuplicate = { viewModel.duplicateEntry(entry) },
+                                onSaveToCatalogue = { viewModel.saveToCatalogue(entry) },
                                 onClick = { viewModel.showDetail(entry) }
                             )
                         }
@@ -260,6 +311,8 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         FoodEntryItem(
                             entry = entry,
                             onDelete = { viewModel.deleteEntry(entry) },
+                            onDuplicate = { viewModel.duplicateEntry(entry) },
+                            onSaveToCatalogue = { viewModel.saveToCatalogue(entry) },
                             onClick = { viewModel.showDetail(entry) }
                         )
                     }
@@ -304,34 +357,37 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("What did you eat?") },
-                    enabled = !isProcessing,
+                    placeholder = { Text(if (isReady) "What did you eat?" else "AI Model Required") },
+                    enabled = !isProcessing && isReady,
                     singleLine = true
                 )
-                IconButton(
-                    onClick = {
-                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                            cameraLauncher.launch(imageUri)
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
-                    },
-                    enabled = !isProcessing
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoCamera,
-                        contentDescription = "Camera"
-                    )
-                }
-                IconButton(
-                    onClick = { galleryLauncher.launch("image/*") },
-                    enabled = !isProcessing
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = "Gallery"
-                    )
+                if (isReady && !userConfig.useGpu) {
+                    IconButton(
+                        onClick = {
+                            val permissionCheckResult =
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                cameraLauncher.launch(imageUri)
+                            } else {
+                                permissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        },
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = "Camera"
+                        )
+                    }
+                    IconButton(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = "Gallery"
+                        )
+                    }
                 }
                 IconButton(
                     onClick = {
@@ -340,7 +396,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                             inputText = ""
                         }
                     },
-                    enabled = !isProcessing
+                    enabled = !isProcessing && isReady
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_send),
@@ -501,9 +557,12 @@ fun CalorieSummaryCard(
 fun FoodEntryItem(
     entry: FoodEntry,
     onDelete: () -> Unit,
+    onDuplicate: () -> Unit,
+    onSaveToCatalogue: () -> Unit,
     onClick: () -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
         AlertDialog(
@@ -553,13 +612,43 @@ fun FoodEntryItem(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
-            
-            IconButton(onClick = { showDeleteConfirm = true }) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_delete),
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                )
+
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Menu"
+                    )
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Duplicate") },
+                        onClick = {
+                            onDuplicate()
+                            showMenu = false
+                        },
+                        leadingIcon = { Icon(painterResource(id = R.drawable.ic_content_copy), contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Save to Catalogue") },
+                        onClick = {
+                            onSaveToCatalogue()
+                            showMenu = false
+                        },
+                        leadingIcon = { Icon(painterResource(id = R.drawable.ic_star), contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            showDeleteConfirm = true
+                            showMenu = false
+                        },
+                        leadingIcon = { Icon(painterResource(id = R.drawable.ic_delete), contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) }
+                    )
+                }
             }
         }
     }

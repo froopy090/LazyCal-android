@@ -33,7 +33,19 @@ data class UserConfig(
     val dailyCalorieGoal: Int = 2000,
     val themeMode: String = "auto", // "auto", "light", "dark"
     val launchCount: Int = 0,
-    val hasDonatedOrDismissed: Boolean = false
+    val hasDonatedOrDismissed: Boolean = false,
+    val useGpu: Boolean = false
+)
+
+@Entity(tableName = "saved_foods")
+data class SavedFood(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val foodName: String,
+    val amount: String,
+    val calories: Int,
+    val protein: Int = 0,
+    val carbs: Int = 0,
+    val fats: Int = 0
 )
 
 data class DaySummary(
@@ -89,10 +101,23 @@ interface UserConfigDao {
     suspend fun saveUserConfig(config: UserConfig)
 }
 
-@Database(entities = [FoodEntry::class, UserConfig::class], version = 7, exportSchema = false)
+@Dao
+interface SavedFoodDao {
+    @Query("SELECT * FROM saved_foods ORDER BY foodName ASC")
+    fun getAllSavedFoods(): Flow<List<SavedFood>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(food: SavedFood)
+
+    @Delete
+    suspend fun delete(food: SavedFood)
+}
+
+@Database(entities = [FoodEntry::class, UserConfig::class, SavedFood::class], version = 8, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun foodDao(): FoodDao
     abstract fun userConfigDao(): UserConfigDao
+    abstract fun savedFoodDao(): SavedFoodDao
 
     companion object {
         @Volatile

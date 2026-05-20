@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -201,6 +202,35 @@ fun FoodDetailScreen(
                     DetailRow("Protein", "${entry.protein}g", onEdit = { showEditDialog = EditField.PROTEIN })
                     DetailRow("Carbs", "${entry.carbs}g", onEdit = { showEditDialog = EditField.CARBS })
                     DetailRow("Fats", "${entry.fats}g", onEdit = { showEditDialog = EditField.FATS })
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                TextButton(
+                    onClick = {
+                        viewModel.duplicateEntry(entry)
+                        onBack()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(painterResource(id = R.drawable.ic_content_copy), contentDescription = null)
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text("Duplicate")
+                }
+                TextButton(
+                    onClick = {
+                        viewModel.saveToCatalogue(entry)
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(painterResource(id = R.drawable.ic_star), contentDescription = null)
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text("Save to Catalogue")
                 }
             }
         }

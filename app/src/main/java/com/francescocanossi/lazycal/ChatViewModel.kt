@@ -56,6 +56,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val db = ChatDatabase.getDatabase(application)
     private val foodDao = db.foodDao()
     private val userConfigDao = db.userConfigDao()
+    private val savedFoodDao = db.savedFoodDao()
     private val csvManager = CsvManager(foodDao)
 
     private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -125,6 +126,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val userConfig: StateFlow<UserConfig> = userConfigDao.getUserConfig()
         .map { it ?: UserConfig() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
+
+    val savedFoods: StateFlow<List<SavedFood>> = savedFoodDao.getAllSavedFoods()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _inputErrorMessage = MutableStateFlow<String?>(null)
     val inputErrorMessage: StateFlow<String?> = _inputErrorMessage.asStateFlow()
@@ -205,6 +209,62 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val current = userConfigDao.getUserConfigSync() ?: UserConfig()
             userConfigDao.saveUserConfig(current.copy(dailyCalorieGoal = goal, themeMode = themeMode))
+        }
+    }
+
+    fun toggleGpu(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            if (current.useGpu != enabled) {
+                userConfigDao.saveUserConfig(current.copy(useGpu = enabled))
+                // Reset engine to apply backend change
+                resetEngine()
+            }
+        }
+    }
+
+    fun duplicateEntry(entry: FoodEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.insert(entry.copy(id = 0, timestamp = System.currentTimeMillis()))
+        }
+    }
+
+    fun saveToCatalogue(entry: FoodEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            savedFoodDao.insert(
+                SavedFood(
+                    foodName = entry.foodName,
+                    amount = entry.amount,
+                    calories = entry.calories,
+                    protein = entry.protein,
+                    carbs = entry.carbs,
+                    fats = entry.fats
+                )
+            )
+        }
+    }
+
+    fun deleteSavedFood(food: SavedFood) {
+        viewModelScope.launch(Dispatchers.IO) {
+            savedFoodDao.delete(food)
+        }
+    }
+
+    fun addFromCatalogue(food: SavedFood) {
+        val targetDayId = _selectedDay.value ?: todayId
+        viewModelScope.launch(Dispatchers.IO) {
+            foodDao.insert(
+                FoodEntry(
+                    foodName = food.foodName,
+                    amount = food.amount,
+                    calories = food.calories,
+                    protein = food.protein,
+                    carbs = food.carbs,
+                    fats = food.fats,
+                    dayId = targetDayId,
+                    originalInput = "From Catalogue"
+                )
+            )
         }
     }
 
@@ -308,13 +368,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Ensure all initialization work is off-thread
-                // Keep the backend on CPU, app simply performs better this way
-                // TODO: check if device has an NPU, if yes, use that as the backend because it'll be way more efficient
+                val config = userConfigDao.getUserConfigSync() ?: UserConfig()
+                val selectedBackend = if (config.useGpu) Backend.GPU() else Backend.CPU()
+                
                 val engineInstance = withContext(Dispatchers.IO) {
                     val engineConfig = EngineConfig(
                         modelPath = modelManager.modelFile.absolutePath,
-                        backend = Backend.CPU(),
-                        visionBackend = Backend.CPU(),
+                        backend = selectedBackend,
+                        visionBackend = selectedBackend,
                     )
                     Engine(engineConfig).also { it.initialize() }
                 }

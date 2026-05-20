@@ -48,12 +48,14 @@ import com.francescocanossi.lazycal.screens.DownloadingScreen
 import com.francescocanossi.lazycal.screens.FoodDetailScreen
 import com.francescocanossi.lazycal.screens.HistoryScreen
 import com.francescocanossi.lazycal.screens.ProgressScreen
+import com.francescocanossi.lazycal.screens.SavedItemsScreen
 import com.francescocanossi.lazycal.screens.SettingsScreen
 import com.francescocanossi.lazycal.screens.WelcomeScreen
 import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 
 enum class TabItem(val title: String, val iconRes: Int) {
     Tracker("Tracker", R.drawable.ic_tracker),
+    Saved("Saved", R.drawable.ic_star),
     Progress("Progress", R.drawable.ic_progress),
     History("History", R.drawable.ic_history)
 }
@@ -205,8 +207,66 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                                 when (uiState) {
                                 ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                                ChatState.ModelMissing -> WelcomeScreen(isOnline = isOnline, onDownloadClick = { chatViewModel.startDownload() })
-                                ChatState.Downloading -> DownloadingScreen()
+                                ChatState.ModelMissing -> {
+                                    if (userConfig.launchCount <= 1) {
+                                        WelcomeScreen(isOnline = isOnline, onDownloadClick = { chatViewModel.startDownload() })
+                                    } else {
+                                        // Show Tracker screen even if model is missing for returning users
+                                        HorizontalPager(
+                                            state = pagerState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            userScrollEnabled = true,
+                                            beyondViewportPageCount = 1,
+                                            key = { tabs[it] }
+                                        ) { page ->
+                                            when (tabs[page]) {
+                                                TabItem.Tracker -> ChatScreen(chatViewModel)
+                                                TabItem.Saved -> SavedItemsScreen(
+                                                    chatViewModel,
+                                                    onAdd = {
+                                                        scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
+                                                    }
+                                                )
+                                                TabItem.Progress -> ProgressScreen(progressViewModel)
+                                                TabItem.History -> HistoryScreen(
+                                                    chatViewModel,
+                                                    onDaySelected = {
+                                                        scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
+                                                    })
+                                            }
+                                        }
+                                    }
+                                }
+                                ChatState.Downloading -> {
+                                    if (userConfig.launchCount <= 1) {
+                                        DownloadingScreen()
+                                    } else {
+                                        // Same as above, show UI while downloading in background
+                                        HorizontalPager(
+                                            state = pagerState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            userScrollEnabled = true,
+                                            beyondViewportPageCount = 1,
+                                            key = { tabs[it] }
+                                        ) { page ->
+                                            when (tabs[page]) {
+                                                TabItem.Tracker -> ChatScreen(chatViewModel)
+                                                TabItem.Saved -> SavedItemsScreen(
+                                                    chatViewModel,
+                                                    onAdd = {
+                                                        scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
+                                                    }
+                                                )
+                                                TabItem.Progress -> ProgressScreen(progressViewModel)
+                                                TabItem.History -> HistoryScreen(
+                                                    chatViewModel,
+                                                    onDaySelected = {
+                                                        scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
+                                                    })
+                                            }
+                                        }
+                                    }
+                                }
                                 ChatState.Ready -> {
                                     HorizontalPager(
                                         state = pagerState,
@@ -217,6 +277,12 @@ class MainActivity : ComponentActivity() {
                                     ) { page ->
                                         when (tabs[page]) {
                                             TabItem.Tracker -> ChatScreen(chatViewModel)
+                                            TabItem.Saved -> SavedItemsScreen(
+                                                chatViewModel,
+                                                onAdd = {
+                                                    scope.launch { pagerState.animateScrollToPage(tabs.indexOf(TabItem.Tracker)) }
+                                                }
+                                            )
                                             TabItem.Progress -> ProgressScreen(progressViewModel)
                                             TabItem.History -> HistoryScreen(
                                                 chatViewModel,

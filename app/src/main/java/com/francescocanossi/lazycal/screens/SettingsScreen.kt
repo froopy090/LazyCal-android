@@ -31,6 +31,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -271,6 +272,43 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(start = 16.dp)
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("AI Engine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("GPU Acceleration", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text(
+                                "Uses the device's GPU for faster text processing.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = userConfig.useGpu,
+                            onCheckedChange = { viewModel.toggleGpu(it) }
+                        )
+                    }
+                    if (userConfig.useGpu) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Note: GPU acceleration significantly improves text processing speed but is currently incompatible with image analysis. Camera and gallery options will be disabled.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
 

@@ -36,4 +36,11 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
             userConfigDao.saveUserConfig(current.copy(hasDonatedOrDismissed = true))
         }
     }
+
+    fun toggleGpu(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = userConfigDao.getUserConfigSync() ?: UserConfig()
+            userConfigDao.saveUserConfig(current.copy(useGpu = enabled))
+        }
+    }
 }
