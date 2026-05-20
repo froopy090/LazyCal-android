@@ -23,12 +23,12 @@ class ProgressViewModel(application: Application) : AndroidViewModel(application
     val daySummaries: StateFlow<List<DaySummary>> = foodDao.getAllDaySummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val userConfig: StateFlow<UserConfig> = userConfigDao.getUserConfig()
-        .map { it ?: UserConfig() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
+    val userConfig: StateFlow<UserConfig?> = userConfigDao.getUserConfig()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val currentStreak: StateFlow<Int> = combine(daySummaries, userConfig) { summaries, config ->
+        if (config == null) return@combine 0
         var streak = 0
         val summaryMap = summaries.associateBy { it.dayId }
         val calendar = Calendar.getInstance()

@@ -123,9 +123,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         foodDao.getDailyTotal(dayId)
     }.map { it ?: 0 }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val userConfig: StateFlow<UserConfig> = userConfigDao.getUserConfig()
-        .map { it ?: UserConfig() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
+    val userConfig: StateFlow<UserConfig?> = userConfigDao.getUserConfig()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val savedFoods: StateFlow<List<SavedFood>> = savedFoodDao.getAllSavedFoods()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

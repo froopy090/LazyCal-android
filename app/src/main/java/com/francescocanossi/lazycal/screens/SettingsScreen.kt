@@ -57,10 +57,11 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
-    val userConfig by viewModel.userConfig.collectAsState()
-    
+    val userConfigNullable by viewModel.userConfig.collectAsState()
+    val userConfig = userConfigNullable ?: return
+
     var showGoalDialog by remember { mutableStateOf(false) }
-    var tempGoal by remember { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
+    var tempGoal by remember(userConfig) { mutableStateOf(userConfig.dailyCalorieGoal.toString()) }
     
     var showDeleteModelDialog by remember { mutableStateOf(false) }
     var showDeleteLogsDialog by remember { mutableStateOf(false) }

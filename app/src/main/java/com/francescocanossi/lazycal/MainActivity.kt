@@ -69,8 +69,11 @@ class MainActivity : ComponentActivity() {
             val chatViewModel: ChatViewModel = viewModel()
             val progressViewModel: ProgressViewModel = viewModel()
             val supportViewModel: SupportViewModel = viewModel()
-            val userConfig by supportViewModel.userConfig.collectAsState()
+            val userConfigNullable by supportViewModel.userConfig.collectAsState()
             
+            // Avoid rendering until the user configuration is loaded to prevent theme flashes
+            val userConfig = userConfigNullable ?: return@setContent
+
             val systemInDarkTheme = isSystemInDarkTheme()
             val darkTheme = remember(userConfig.themeMode, systemInDarkTheme) {
                 when (userConfig.themeMode) {

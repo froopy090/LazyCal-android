@@ -137,7 +137,8 @@ fun DownloadingScreen() {
 fun ChatScreen(viewModel: ChatViewModel) {
     val entries by viewModel.foodEntries.collectAsState()
     val dailyTotal by viewModel.dailyTotal.collectAsState()
-    val userConfig by viewModel.userConfig.collectAsState()
+    val userConfigNullable by viewModel.userConfig.collectAsState()
+    val userConfig = userConfigNullable ?: return
     val isProcessing by viewModel.isProcessing.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()

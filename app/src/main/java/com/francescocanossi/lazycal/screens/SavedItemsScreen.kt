@@ -48,7 +48,7 @@ fun SavedItemsScreen(viewModel: ChatViewModel, onAdd: () -> Unit) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_star),
+                    painter = painterResource(id = R.drawable.ic_bookmark),
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)

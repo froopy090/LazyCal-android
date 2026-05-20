@@ -52,7 +52,8 @@ import java.util.Calendar
 fun ProgressScreen(viewModel: ProgressViewModel) {
     val streak by viewModel.currentStreak.collectAsState()
     val summaries by viewModel.daySummaries.collectAsState()
-    val userConfig by viewModel.userConfig.collectAsState()
+    val userConfigNullable by viewModel.userConfig.collectAsState()
+    val userConfig = userConfigNullable ?: return
 
     val locale = LocalLocale.current.platformLocale
     val summaryMap = remember(summaries) { summaries.associateBy { it.dayId } }

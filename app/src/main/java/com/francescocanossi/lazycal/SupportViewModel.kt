@@ -15,9 +15,8 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     private val userConfigDao = db.userConfigDao()
     private val foodDao = db.foodDao()
 
-    val userConfig: StateFlow<UserConfig> = userConfigDao.getUserConfig()
-        .map { it ?: UserConfig() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserConfig())
+    val userConfig: StateFlow<UserConfig?> = userConfigDao.getUserConfig()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val totalEntriesCount: StateFlow<Int> = foodDao.getTotalEntriesCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
