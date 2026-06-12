@@ -230,7 +230,7 @@ fun FoodDetailScreen(
                 ) {
                     Icon(painterResource(id = R.drawable.ic_bookmark_add), contentDescription = null)
                     Spacer(Modifier.padding(horizontal = 4.dp))
-                    Text("Save to Catalogue")
+                    Text("Save item")
                 }
             }
         }

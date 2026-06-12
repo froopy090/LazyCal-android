@@ -34,13 +34,6 @@ fun SavedItemsScreen(viewModel: ChatViewModel, onAdd: () -> Unit) {
     val savedFoods by viewModel.savedFoods.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = "Saved Items",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
         if (savedFoods.isEmpty()) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -112,15 +105,13 @@ fun SavedFoodItem(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-
             IconButton(onClick = onAdd) {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_send), // Reusing send icon for "Add"
+                    painter = painterResource(id = R.drawable.ic_add_2),
                     contentDescription = "Add to tracker",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-
             IconButton(onClick = onDelete) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_delete),

@@ -634,7 +634,7 @@ fun FoodEntryItem(
                         leadingIcon = { Icon(painterResource(id = R.drawable.ic_content_copy), contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Save to Catalogue") },
+                        text = { Text("Save item") },
                         onClick = {
                             onSaveToCatalogue()
                             showMenu = false
