@@ -209,7 +209,7 @@ class MainActivity : ComponentActivity() {
                     ) { innerPadding ->
                         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                                 when (uiState) {
-                                ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                                ChatState.CheckingModel, ChatState.Initializing -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 ChatState.ModelMissing -> {
                                     if (userConfig.launchCount <= 1 && totalEntriesCount == 0) {
                                         WelcomeScreen(isOnline = isOnline, onDownloadClick = { chatViewModel.startDownload() })

@@ -154,6 +154,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
 
     val isModelMissing = uiState is ChatState.ModelMissing
     val isDownloading = uiState is ChatState.Downloading
+    val isInitializing = uiState is ChatState.Initializing
     val isReady = uiState is ChatState.Ready
 
     val tempFile = remember { File(context.externalCacheDir, "temp_food.jpg") }
@@ -200,7 +201,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val maxHeight = this.maxHeight
         val maxWidth = this.maxWidth
 
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -358,7 +358,15 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (isReady) "What did you eat?" else "AI Model Required") },
+                    placeholder = { 
+                        Text(
+                            when {
+                                isReady -> "What did you eat?"
+                                isInitializing -> "AI Initializing..."
+                                else -> "AI Model Required"
+                            }
+                        ) 
+                    },
                     enabled = !isProcessing && isReady,
                     singleLine = true
                 )

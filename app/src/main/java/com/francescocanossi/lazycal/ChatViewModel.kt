@@ -23,7 +23,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -47,6 +49,7 @@ sealed class ChatState {
     object CheckingModel : ChatState()
     object ModelMissing : ChatState()
     object Downloading : ChatState()
+    object Initializing : ChatState()
     object Ready : ChatState()
     data class Error(val message: String) : ChatState()
 }
@@ -135,6 +138,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _detailEntry = MutableStateFlow<FoodEntry?>(null)
     val detailEntry: StateFlow<FoodEntry?> = _detailEntry.asStateFlow()
 
+    private val engineMutex = Mutex()
     private var engine: Engine? = null
     private var conversation: Conversation? = null
 
@@ -314,11 +318,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // Give the system a moment to finalize the file
             var retries = 5
             while (retries > 0 && !modelManager.isModelDownloaded()) {
-                kotlinx.coroutines.delay(1000)
+                delay(1000)
                 retries--
             }
             if (modelManager.isModelDownloaded()) {
-                _uiState.value = ChatState.Ready
+                ensureEngineInitialized()
             } else {
                 _uiState.value = ChatState.Error("Model file not found after download.")
             }
@@ -348,28 +352,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun ensureEngineInitialized() {
-        // Restore from cache if available
-        if (engine == null && cachedEngine != null) {
-            engine = cachedEngine
-            conversation = cachedConversation
-        }
+        engineMutex.withLock {
+            // Restore from cache if available
+            if (engine == null && cachedEngine != null) {
+                engine = cachedEngine
+                conversation = cachedConversation
+            }
 
-        if (engine != null && conversation != null) {
-            if (_uiState.value != ChatState.Ready) _uiState.value = ChatState.Ready
-            return
-        }
+            if (engine != null && conversation != null) {
+                if (_uiState.value != ChatState.Ready) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = ChatState.Ready
+                    }
+                }
+                return
+            }
 
-        // Clear previous failed job if necessary
-        if (initializationJob?.isCompleted == true && engine == null) {
-            initializationJob = null
-        }
+            withContext(Dispatchers.Main) {
+                _uiState.value = ChatState.Initializing
+            }
 
-        initializationJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Ensure all initialization work is off-thread
                 val config = userConfigDao.getUserConfigSync() ?: UserConfig()
                 val selectedBackend = if (config.useGpu) Backend.GPU() else Backend.CPU()
-                
+
                 val engineInstance = withContext(Dispatchers.IO) {
                     val engineConfig = EngineConfig(
                         modelPath = modelManager.modelFile.absolutePath,
@@ -396,9 +403,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
                 }
+                throw e // Rethrow to let the caller handle it if needed
             }
         }
-        initializationJob?.join()
     }
 
     companion object {
@@ -406,7 +413,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private var cachedEngine: Engine? = null
         @Volatile
         private var cachedConversation: Conversation? = null
-        private var initializationJob: Job? = null
     }
 
     private val _isProcessing = MutableStateFlow(false)
@@ -423,17 +429,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendImage(imagePath: String) {
         if (_isProcessing.value) return
+        _isProcessing.value = true
         val targetDayId = _selectedDay.value
 
         viewModelScope.launch(Dispatchers.IO) {
-            _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
                 ensureEngineInitialized()
                 if (conversation == null) return@launch
 
                 // Pre-process and resize image to target resolution (720x880) to reduce GPU preprocessing lag
-                val processedImagePath = withContext(Dispatchers.Default) {
+                val processedImagePath = withContext(Dispatchers.IO) {
                     try {
                         val originalFile = File(imagePath)
                         val options = BitmapFactory.Options()
@@ -503,15 +509,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(text: String) {
         if (_isProcessing.value) return
-        val targetDayId = _selectedDay.value
-
+        
         if (!isPromptSafe(text)) {
             _inputErrorMessage.value = "Suspicious input detected. Please keep it food-related."
             return
         }
 
+        _isProcessing.value = true
+        val targetDayId = _selectedDay.value
+
         viewModelScope.launch(Dispatchers.IO) {
-            _isProcessing.value = true
             _inputErrorMessage.value = null
             try {
                 ensureEngineInitialized()
@@ -677,8 +684,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 engine = null
                 cachedConversation = null
                 cachedEngine = null
-                initializationJob?.cancel()
-                initializationJob = null
                 
                 withContext(Dispatchers.Main) {
                     _inputErrorMessage.value = "AI Engine Reset successfully."
