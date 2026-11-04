@@ -12,6 +12,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.litertlm.Backend
@@ -21,8 +22,10 @@ import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +35,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -52,6 +56,11 @@ sealed class ChatState {
     object Initializing : ChatState()
     object Ready : ChatState()
     data class Error(val message: String) : ChatState()
+}
+
+data class DownloadProgress(val bytes: Long, val total: Long, val statusText: String? = null) {
+    val fraction: Float?
+        get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else null
 }
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -138,9 +147,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _detailEntry = MutableStateFlow<FoodEntry?>(null)
     val detailEntry: StateFlow<FoodEntry?> = _detailEntry.asStateFlow()
 
+    private val _downloadProgress = MutableStateFlow<DownloadProgress?>(null)
+    val downloadProgress: StateFlow<DownloadProgress?> = _downloadProgress.asStateFlow()
+
+    private var progressJob: Job? = null
+
     private val engineMutex = Mutex()
     private var engine: Engine? = null
     private var conversation: Conversation? = null
+
+    // Survives a native crash during engine init so the next launch doesn't crash the same way
+    private val enginePrefs = application.getSharedPreferences("engine_state", Context.MODE_PRIVATE)
 
     private val systemInstruction = """
         You are an expert nutritionist AI. Your task is to convert food descriptions into a JSON array of objects.
@@ -164,21 +181,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         Only output the final JSON.
     """.trimIndent()
 
-    private var downloadId: Long = -1
-
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            if (id == downloadId && id != -1L) {
-                onDownloadComplete()
+            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: -1L
+            if (id != -1L && id == modelManager.activeDownloadId) {
+                // The progress tracker picks up the final status and finalizes the file
+                trackDownload()
             }
         }
     }
 
     init {
-        checkModel()
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
-        
+
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(
             application,
@@ -186,6 +201,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             filter,
             ContextCompat.RECEIVER_EXPORTED
         )
+        checkModel()
     }
 
     fun selectDay(dayId: String) {
@@ -216,6 +232,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleGpu(enabled: Boolean) {
+        if (_isProcessing.value) {
+            _inputErrorMessage.value = "Please wait for the current entry to finish."
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val current = userConfigDao.getUserConfigSync() ?: UserConfig()
             if (current.useGpu != enabled) {
@@ -272,76 +292,174 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun checkModel() {
-        if (modelManager.isModelDownloaded()) {
-            _uiState.value = ChatState.Ready
-        } else {
-            _uiState.value = ChatState.ModelMissing
+        viewModelScope.launch(Dispatchers.IO) {
+            when {
+                modelManager.isModelDownloaded() -> {
+                    if (enginePrefs.getBoolean(KEY_INIT_IN_PROGRESS, false)) {
+                        // The previous engine init never finished: the process died in native code
+                        enginePrefs.edit(commit = true) { putBoolean(KEY_INIT_IN_PROGRESS, false) }
+                        val config = userConfigDao.getUserConfigSync() ?: UserConfig()
+                        if (config.useGpu) {
+                            userConfigDao.saveUserConfig(config.copy(useGpu = false))
+                            _inputErrorMessage.value = "GPU acceleration caused a problem and was turned off."
+                        } else {
+                            _uiState.value = ChatState.Error(
+                                "The AI engine stopped unexpectedly last time. Tap Retry, or re-download the model if this keeps happening."
+                            )
+                            return@launch
+                        }
+                    }
+                    ensureEngineInitialized()
+                }
+                modelManager.activeDownloadId != -1L -> trackDownload()
+                else -> _uiState.value = ChatState.ModelMissing
+            }
         }
     }
 
     fun startDownload() {
-        if (_uiState.value == ChatState.Downloading || _uiState.value == ChatState.Ready) return
+        val state = _uiState.value
+        if (state == ChatState.Downloading || state == ChatState.Initializing || state == ChatState.Ready) return
 
         if (!_isOnline.value) {
             _inputErrorMessage.value = "No internet connection. Please connect and try again."
             return
         }
         _uiState.value = ChatState.Downloading
-        val newId = modelManager.downloadModel()
-        if (newId == -1L) {
-            // If it returned -1, check if it's because the file is already there
-            if (modelManager.isModelDownloaded()) {
-                _uiState.value = ChatState.Ready
-            } else {
-                _uiState.value = ChatState.Error("Failed to start download")
+        _downloadProgress.value = DownloadProgress(0, ModelManager.EXPECTED_SIZE_BYTES)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            when (val result = modelManager.startDownload()) {
+                is StartResult.Started -> trackDownload()
+                StartResult.AlreadyDownloaded -> {
+                    _downloadProgress.value = null
+                    ensureEngineInitialized()
+                }
+                is StartResult.NotEnoughSpace -> {
+                    _downloadProgress.value = null
+                    _uiState.value = ChatState.ModelMissing
+                    _inputErrorMessage.value =
+                        "Not enough storage. The AI model needs ${formatGb(result.requiredBytes)} free, " +
+                            "but only ${formatGb(result.availableBytes)} is available."
+                }
+                is StartResult.Failed -> {
+                    _downloadProgress.value = null
+                    _uiState.value = ChatState.Error(result.message)
+                }
             }
+        }
+    }
+
+    /**
+     * Follows the system download until it finishes. The download itself runs in the
+     * DownloadManager process, so it keeps going when the app is closed or the screen is locked.
+     */
+    @Synchronized
+    private fun trackDownload() {
+        if (progressJob?.isActive == true) return
+        _uiState.value = ChatState.Downloading
+
+        progressJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                when (val status = modelManager.queryStatus()) {
+                    is DownloadStatus.Running -> {
+                        _downloadProgress.value = DownloadProgress(status.bytes, status.total)
+                    }
+                    is DownloadStatus.Paused -> {
+                        _downloadProgress.value = DownloadProgress(
+                            status.bytes, status.total, ModelManager.pausedReasonText(status.reason)
+                        )
+                    }
+                    DownloadStatus.Succeeded -> {
+                        finishDownload()
+                        return@launch
+                    }
+                    is DownloadStatus.Failed -> {
+                        modelManager.cancelDownload()
+                        _downloadProgress.value = null
+                        _uiState.value = ChatState.Error(ModelManager.failedReasonText(status.reason))
+                        return@launch
+                    }
+                    DownloadStatus.None -> {
+                        // Removed outside the app, e.g. cancelled from the system Downloads screen
+                        _downloadProgress.value = null
+                        if (modelManager.isModelDownloaded()) {
+                            ensureEngineInitialized()
+                        } else {
+                            modelManager.cancelDownload()
+                            _uiState.value = ChatState.ModelMissing
+                        }
+                        return@launch
+                    }
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    private suspend fun finishDownload() {
+        _downloadProgress.value = DownloadProgress(ModelManager.EXPECTED_SIZE_BYTES, ModelManager.EXPECTED_SIZE_BYTES, "Finishing up…")
+        // Give the system a moment to finalize the file
+        var retries = 5
+        while (!modelManager.finalizeDownload() && retries > 0) {
+            delay(1000)
+            retries--
+        }
+        _downloadProgress.value = null
+        if (modelManager.isModelDownloaded()) {
+            ensureEngineInitialized()
         } else {
-            downloadId = newId
+            modelManager.cancelDownload()
+            _uiState.value = ChatState.Error("The downloaded model file is incomplete. Please download it again.")
+        }
+    }
+
+    fun cancelDownload() {
+        progressJob?.cancel()
+        progressJob = null
+        _downloadProgress.value = null
+        _uiState.value = ChatState.ModelMissing
+        viewModelScope.launch(Dispatchers.IO) {
+            modelManager.cancelDownload()
         }
     }
 
     fun retry() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
+            enginePrefs.edit(commit = true) { putBoolean(KEY_INIT_IN_PROGRESS, false) }
             if (modelManager.isModelDownloaded()) {
-                _uiState.value = ChatState.CheckingModel
                 ensureEngineInitialized()
             } else {
-                // If model download check fails (e.g. truncated file), clear it and start fresh
-                modelManager.deleteModel()
-                startDownload()
+                withContext(Dispatchers.Main) { startDownload() }
             }
         }
     }
 
-    fun onDownloadComplete() {
-        viewModelScope.launch {
-            // Give the system a moment to finalize the file
-            var retries = 5
-            while (retries > 0 && !modelManager.isModelDownloaded()) {
-                delay(1000)
-                retries--
-            }
-            if (modelManager.isModelDownloaded()) {
-                ensureEngineInitialized()
-            } else {
-                _uiState.value = ChatState.Error("Model file not found after download.")
-            }
+    fun redownloadModel() {
+        if (_isProcessing.value) return
+        progressJob?.cancel()
+        viewModelScope.launch(Dispatchers.IO) {
+            closeEngine()
+            modelManager.deleteModel()
+            enginePrefs.edit(commit = true) { putBoolean(KEY_INIT_IN_PROGRESS, false) }
+            _downloadProgress.value = null
+            _uiState.value = ChatState.ModelMissing
+            withContext(Dispatchers.Main) { startDownload() }
         }
     }
 
     fun deleteModel() {
+        if (_isProcessing.value) {
+            _inputErrorMessage.value = "Please wait for the current entry to finish."
+            return
+        }
+        progressJob?.cancel()
         viewModelScope.launch(Dispatchers.IO) {
-            conversation?.close()
-            engine?.close()
-            conversation = null
-            engine = null
-            cachedConversation = null
-            cachedEngine = null
+            closeEngine()
             modelManager.deleteModel()
-            withContext(Dispatchers.Main) {
-                _uiState.value = ChatState.ModelMissing
-                _inputErrorMessage.value = null
-            }
+            _downloadProgress.value = null
+            _uiState.value = ChatState.ModelMissing
+            _inputErrorMessage.value = null
         }
     }
 
@@ -351,7 +469,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun ensureEngineInitialized() {
+    /**
+     * Loads the engine if needed. Never throws: failures end up in [uiState] as [ChatState.Error].
+     */
+    private suspend fun ensureEngineInitialized() = withContext(Dispatchers.IO) {
         engineMutex.withLock {
             // Restore from cache if available
             if (engine == null && cachedEngine != null) {
@@ -360,55 +481,92 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (engine != null && conversation != null) {
-                if (_uiState.value != ChatState.Ready) {
-                    withContext(Dispatchers.Main) {
-                        _uiState.value = ChatState.Ready
+                _uiState.value = ChatState.Ready
+                return@withLock
+            }
+
+            if (!modelManager.isModelDownloaded()) {
+                _uiState.value = ChatState.ModelMissing
+                return@withLock
+            }
+
+            _uiState.value = ChatState.Initializing
+
+            val config = userConfigDao.getUserConfigSync() ?: UserConfig()
+            // If GPU init fails, fall back to CPU rather than leaving the user stuck
+            val attempts = if (config.useGpu) listOf(true, false) else listOf(false)
+            var lastError: Throwable? = null
+
+            for (useGpu in attempts) {
+                try {
+                    val (engineInstance, conversationInstance) = createEngine(useGpu)
+                    engine = engineInstance
+                    conversation = conversationInstance
+                    cachedEngine = engineInstance
+                    cachedConversation = conversationInstance
+
+                    if (config.useGpu && !useGpu) {
+                        userConfigDao.saveUserConfig(config.copy(useGpu = false))
+                        _inputErrorMessage.value = "GPU acceleration isn't supported on this device, so it was turned off."
                     }
-                }
-                return
-            }
-
-            withContext(Dispatchers.Main) {
-                _uiState.value = ChatState.Initializing
-            }
-
-            try {
-                // Ensure all initialization work is off-thread
-                val config = userConfigDao.getUserConfigSync() ?: UserConfig()
-                val selectedBackend = if (config.useGpu) Backend.GPU() else Backend.CPU()
-
-                val engineInstance = withContext(Dispatchers.IO) {
-                    val engineConfig = EngineConfig(
-                        modelPath = modelManager.modelFile.absolutePath,
-                        backend = selectedBackend,
-                        visionBackend = selectedBackend,
-                    )
-                    Engine(engineConfig).also { it.initialize() }
-                }
-
-                val conversationConfig = ConversationConfig(
-                    systemInstruction = Contents.of(systemInstruction)
-                )
-                val conversationInstance = engineInstance.createConversation(conversationConfig)
-
-                engine = engineInstance
-                conversation = conversationInstance
-                cachedEngine = engineInstance
-                cachedConversation = conversationInstance
-
-                withContext(Dispatchers.Main) {
                     _uiState.value = ChatState.Ready
+                    return@withLock
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    lastError = t
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    _uiState.value = ChatState.Error("Failed to initialize: ${e.message}")
-                }
-                throw e // Rethrow to let the caller handle it if needed
             }
+
+            _uiState.value = ChatState.Error("Failed to initialize the AI engine: ${lastError?.message ?: "unknown error"}")
         }
     }
 
+    private fun createEngine(useGpu: Boolean): Pair<Engine, Conversation> {
+        val backend = if (useGpu) Backend.GPU() else Backend.CPU()
+        enginePrefs.edit(commit = true) { putBoolean(KEY_INIT_IN_PROGRESS, true) }
+        try {
+            val engineConfig = EngineConfig(
+                modelPath = modelManager.modelFile.absolutePath,
+                backend = backend,
+                visionBackend = backend,
+            )
+            // Don't close an engine whose initialize() threw, LiteRT-LM rejects that
+            val engineInstance = Engine(engineConfig).also { it.initialize() }
+            try {
+                val conversationConfig = ConversationConfig(
+                    systemInstruction = Contents.of(systemInstruction)
+                )
+                return engineInstance to engineInstance.createConversation(conversationConfig)
+            } catch (t: Throwable) {
+                try { engineInstance.close() } catch (_: Throwable) { }
+                throw t
+            }
+        } finally {
+            enginePrefs.edit(commit = true) { putBoolean(KEY_INIT_IN_PROGRESS, false) }
+        }
+    }
+
+    private suspend fun closeEngine() {
+        engineMutex.withLock {
+            val currentConversation = conversation ?: cachedConversation
+            val currentEngine = engine ?: cachedEngine
+            conversation = null
+            engine = null
+            cachedConversation = null
+            cachedEngine = null
+            // Conversation must be closed before the engine; a second close() throws, so guard both
+            try { currentConversation?.close() } catch (_: Throwable) { }
+            try { currentEngine?.close() } catch (_: Throwable) { }
+        }
+    }
+
+    private fun formatGb(bytes: Long): String =
+        String.format(Locale.getDefault(), "%.2f GB", bytes / 1_000_000_000.0)
+
     companion object {
+        private const val KEY_INIT_IN_PROGRESS = "init_in_progress"
+
         @Volatile
         private var cachedEngine: Engine? = null
         @Volatile
@@ -497,7 +655,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     parseAndSave(finalResponse, "Image Analysis", targetDayId)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: JNI/OOM errors from the engine must not crash the app
                 withContext(Dispatchers.Main) {
                     _inputErrorMessage.value = "Error: ${e.message}"
                 }
@@ -554,7 +713,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     parseAndSave(finalResponse, text, targetDayId)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: JNI/OOM errors from the engine must not crash the app
                 withContext(Dispatchers.Main) {
                     _inputErrorMessage.value = "Error: ${e.message}"
                 }
@@ -676,22 +836,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun importFromCSV(csvData: String): Boolean = csvManager.importFromCSV(csvData)
 
     fun resetEngine() {
+        // Closing the engine mid-inference is unsafe
+        if (_isProcessing.value) {
+            _inputErrorMessage.value = "Please wait for the current entry to finish."
+            return
+        }
+        if (!modelManager.isModelDownloaded()) {
+            _inputErrorMessage.value = "Download the AI model first."
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                conversation?.close()
-                engine?.close()
-                conversation = null
-                engine = null
-                cachedConversation = null
-                cachedEngine = null
-                
-                withContext(Dispatchers.Main) {
-                    _inputErrorMessage.value = "AI Engine Reset successfully."
-                }
-                ensureEngineInitialized()
-            } catch (_: Exception) {
-                // Ignore reset failures
-            }
+            closeEngine()
+            _inputErrorMessage.value = "AI Engine Reset successfully."
+            ensureEngineInitialized()
         }
     }
 

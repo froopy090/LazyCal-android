@@ -1,5 +1,6 @@
 package com.francescocanossi.lazycal.screens
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -53,7 +54,9 @@ import androidx.compose.ui.unit.dp
 import com.francescocanossi.lazycal.ChatState
 import com.francescocanossi.lazycal.ChatViewModel
 import com.francescocanossi.lazycal.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,9 +83,15 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     ) { uri ->
         uri?.let {
             scope.launch {
-                val csvData = viewModel.getExportCSV()
-                context.contentResolver.openOutputStream(it)?.use { output ->
-                    output.write(csvData.toByteArray())
+                try {
+                    val csvData = viewModel.getExportCSV()
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(it)?.use { output ->
+                            output.write(csvData.toByteArray())
+                        }
+                    }
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -93,10 +102,18 @@ fun SettingsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     ) { uri ->
         uri?.let { selectedUri ->
             scope.launch {
-                context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                    val csvData = input.bufferedReader().use { reader -> reader.readText() }
-                    tempImportData = csvData
-                    showImportDialog = true
+                try {
+                    val csvData = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                            input.bufferedReader().use { reader -> reader.readText() }
+                        }
+                    }
+                    if (csvData != null) {
+                        tempImportData = csvData
+                        showImportDialog = true
+                    }
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Couldn't read that file", Toast.LENGTH_SHORT).show()
                 }
             }
         }
