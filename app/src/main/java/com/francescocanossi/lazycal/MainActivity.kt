@@ -46,13 +46,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.francescocanossi.lazycal.screens.ChatScreen
-import com.francescocanossi.lazycal.screens.DownloadingScreen
 import com.francescocanossi.lazycal.screens.FoodDetailScreen
 import com.francescocanossi.lazycal.screens.HistoryScreen
 import com.francescocanossi.lazycal.screens.ProgressScreen
 import com.francescocanossi.lazycal.screens.SavedItemsScreen
 import com.francescocanossi.lazycal.screens.SettingsScreen
-import com.francescocanossi.lazycal.screens.WelcomeScreen
 import com.francescocanossi.lazycal.ui.theme.LazyCalTheme
 
 enum class TabItem(val title: String, val iconRes: Int) {
@@ -152,10 +150,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // New users have nothing to look at without the model, so give them a dedicated screen
-                val isNewUser = totalEntriesCount == 0
-                val showOnboarding = isNewUser && (uiState == ChatState.ModelMissing || uiState == ChatState.Downloading)
-
                 if (detailEntry != null) {
                     FoodDetailScreen(
                         entry = detailEntry!!,
@@ -190,7 +184,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         bottomBar = {
-                            if (uiState != ChatState.CheckingModel && uiState !is ChatState.Error && !showOnboarding) {
+                            if (uiState != ChatState.CheckingModel && uiState !is ChatState.Error) {
                                 NavigationBar {
                                     tabs.forEachIndexed { index, tab ->
                                         NavigationBarItem(
@@ -243,25 +237,8 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                             when (uiState) {
                                 ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                                ChatState.ModelMissing -> {
-                                    if (isNewUser) {
-                                        WelcomeScreen(isOnline = isOnline, onDownloadClick = { chatViewModel.startDownload() })
-                                    } else {
-                                        // Show Tracker screen even if model is missing for returning users
-                                        appPager()
-                                    }
-                                }
-                                ChatState.Downloading -> {
-                                    if (isNewUser) {
-                                        DownloadingScreen(
-                                            progress = downloadProgress,
-                                            onCancel = { chatViewModel.cancelDownload() }
-                                        )
-                                    } else {
-                                        // Download runs in the background, banner in ChatScreen shows progress
-                                        appPager()
-                                    }
-                                }
+                                // The Tracker banner handles the missing-model and download states
+                                ChatState.ModelMissing, ChatState.Downloading,
                                 ChatState.Initializing, ChatState.Ready -> appPager()
                                 is ChatState.Error -> Column(
                                     modifier = Modifier.align(Alignment.Center).padding(16.dp),

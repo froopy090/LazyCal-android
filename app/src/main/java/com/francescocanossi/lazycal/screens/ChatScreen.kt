@@ -38,7 +38,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -84,116 +83,6 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-
-@Composable
-fun WelcomeScreen(isOnline: Boolean, onDownloadClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            "Lazy Calorie Tracker",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("AI-powered local calorie tracking.", textAlign = TextAlign.Center)
-        Spacer(modifier = Modifier.height(32.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    "No AI model downloaded",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "LazyCal runs its AI entirely on your phone. It needs a one-time 2.58 GB download " +
-                        "before you can log food. Wi-Fi is recommended.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = onDownloadClick, enabled = isOnline) {
-            Text("Download AI model (2.58 GB)")
-        }
-        if (!isOnline) {
-            Text(
-                "No internet connection. Please connect to download the model.",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 8.dp),
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-fun DownloadingScreen(progress: DownloadProgress?, onCancel: () -> Unit) {
-    var showCancelConfirm by remember { mutableStateOf(false) }
-
-    if (showCancelConfirm) {
-        CancelDownloadDialog(
-            onConfirm = {
-                showCancelConfirm = false
-                onCancel()
-            },
-            onDismiss = { showCancelConfirm = false }
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            "Downloading AI model",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        DownloadProgressBar(progress)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            downloadProgressText(progress),
-            style = MaterialTheme.typography.bodyMedium
-        )
-        progress?.statusText?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "You can leave the app or lock your phone. The download continues in the background.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        OutlinedButton(onClick = { showCancelConfirm = true }) {
-            Text("Cancel download")
-        }
-    }
-}
 
 @Composable
 private fun DownloadProgressBar(progress: DownloadProgress?, modifier: Modifier = Modifier) {
@@ -321,7 +210,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    if (isDownloading) "Downloading AI Model..." else "AI Model Missing",
+                                    if (isDownloading) "Downloading AI Model..." else "No AI Model Downloaded",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onErrorContainer
@@ -330,7 +219,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                                     if (isDownloading) {
                                         downloadProgress?.statusText ?: downloadProgressText(downloadProgress)
                                     } else {
-                                        "Download the AI model to enable smart logging."
+                                        "Download the AI model (2.58 GB) to enable smart logging. Wi-Fi recommended."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
