@@ -8,7 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -234,7 +236,14 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                        // Edge-to-edge: keep the food input above the keyboard without double-padding the bottom bar
+                        Box(
+                            modifier = Modifier
+                                .padding(innerPadding)
+                                .consumeWindowInsets(innerPadding)
+                                .imePadding()
+                                .fillMaxSize()
+                        ) {
                             when (uiState) {
                                 ChatState.CheckingModel -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 // The Tracker banner handles the missing-model and download states
