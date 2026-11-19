@@ -31,8 +31,14 @@
 - **Manual Logging:** AI made a mistake? Manually modify any food entries.
 
 ## Installing
-You can download and install the app APK from the [releases](https://github.com/froopy090/LazyCal-android/releases) page; note, however, that
-the app will not auto-update. I am still pending approval from Google to upload the app onto the Play Store. I am also considering releasing the app on F-Droid.
+LazyCal is available on the Google Play Store:
+
+<a href="https://play.google.com/store/apps/details?id=com.francescocanossi.lazycal&pcampaignid=web_share">
+  <img src="./art/google_play_badge.png" height="80" alt="Get it on Google Play">
+</a>
+
+You can also download and install the app APK from the [releases](https://github.com/froopy090/LazyCal-android/releases) page; note, however, that
+APKs installed this way will not auto-update. I am also considering releasing the app on F-Droid.
 
 ## Contributing
 LazyCal is an open source project developed by me. If you would like to contribute to my project, you are very welcome. There are multiple ways to contribute
